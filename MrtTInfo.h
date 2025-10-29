@@ -76,6 +76,9 @@ void MrtTInfo_FreeProcesses(MRT_PROCESS_INFO* Processes, ULONG Count);
 // Returns a malloc'd string, must be free() by caller.
 wchar_t* MrtTInfo_UnicodeStringToWString(UNICODE_STRING* ustr);
 
+const char* WaitReasonToString(ULONG reason);
+const char* ThreadStateToString(ULONG state);
+
 #ifdef __cplusplus
 }
 #endif

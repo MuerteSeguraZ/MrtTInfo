@@ -76,6 +76,59 @@ typedef union {
 
 // --- Main API ---
 
+const char* ThreadStateToString(ULONG state) {
+    switch (state) {
+        case 0: return "Initialized";
+        case 1: return "Ready";
+        case 2: return "Running";
+        case 3: return "Standby";
+        case 4: return "Terminated";
+        case 5: return "Waiting";
+        case 6: return "Transition";
+        case 7: return "Unknown"; // Rare, reserved
+        case 8: return "Waiting (Suspended)";
+        case 9: return "UserRequest";
+        case 10: return "Unknown";
+        case 11: return "DeferredReady";
+        case 12: return "WaitingForCompletion";
+        case 13: return "WaitingForDispatch";
+        case 14: return "WaitingForExecution";
+        case 15: return "WaitingForResource";
+        case 16: return "WaitingForTimer";
+        case 23: return "Suspended";
+        case 27: return "WaitingForEvent";
+        default: return "Unknown";
+    }
+}
+
+const char* WaitReasonToString(ULONG reason) {
+    switch (reason) {
+        case 0: return "Executive";
+        case 1: return "FreePage";
+        case 2: return "PageIn";
+        case 3: return "PoolAllocation";
+        case 4: return "ExecutionDelay";
+        case 5: return "Suspended";
+        case 6: return "UserRequest";
+        case 7: return "EventPairHigh";
+        case 8: return "EventPairLow";
+        case 9: return "LpcReceive";
+        case 10: return "LpcReply";
+        case 11: return "VirtualMemory";
+        case 12: return "PageOut";
+        case 13: return "Unknown";
+        case 14: return "SuspendedExecution";
+        case 15: return "DelayExecution";
+        case 16: return "QueueWait";
+        case 17: return "Unknown";
+        case 18: return "LpcReplyMessage";
+        case 31: return "Unknown";
+        case 42: return "Timer";
+        case 91: return "WaitForLoaderLock";
+        default: return "Other";
+    }
+}
+
 NTSTATUS MrtTInfo_GetAllProcesses(MRT_PROCESS_INFO** Processes, ULONG* Count) {
     if (!Processes || !Count) return STATUS_INVALID_PARAMETER;
     *Processes = NULL;

@@ -22,12 +22,14 @@ int wmain(void) {
         wprintf(L"Process: %s (PID: %lu, Parent: %lu)\n", pname, p->PID, p->ParentPID);
         wprintf(L"  Threads: %lu\n", p->ThreadCount);
         for (ULONG t = 0; t < p->ThreadCount; t++) {
-            MRT_THREAD_INFO* th = &p->Threads[t];
-            wprintf(L"    Thread TID: %lu, Priority: %ld, State: %lu, WaitReason: %lu\n",
-                    th->TID, th->Priority, th->ThreadState, th->WaitReason);
+            MRT_THREAD_INFO* mt = &p->Threads[t];
+            printf("    Thread TID: %lu, Priority: %ld, State: %s, WaitReason: %s\n",
+              mt->TID, mt->Priority,
+              ThreadStateToString(mt->ThreadState),
+              WaitReasonToString(mt->WaitReason));
         }
 
-        if (pname != L"(unknown)") free(pname);
+        if (pname && wcscmp(pname, L"(unknown)") != 0) free(pname);
         wprintf(L"\n");
     }
 
