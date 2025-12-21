@@ -10,6 +10,16 @@ typedef struct MRT_CLIENT_ID {
     HANDLE UniqueThread;
 } MRT_CLIENT_ID;
 
+typedef struct _TEB_PARTIAL {
+    NT_TIB NtTib;
+    PVOID EnvironmentPointer;
+    MRT_CLIENT_ID ClientId;
+    PVOID ActiveRpcHandle;
+    PVOID ThreadLocalStoragePointer;
+    PVOID ProcessEnvironmentBlock;
+    ULONG LastErrorValue;
+} TEB_PARTIAL;
+
 typedef struct MRT_SYSTEM_THREAD_INFORMATION {
     LARGE_INTEGER KernelTime;
     LARGE_INTEGER UserTime;
@@ -234,17 +244,19 @@ NTSTATUS MrtTInfo_GetAllProcesses(MRT_PROCESS_INFO** Processes, ULONG* Count) {
                 HANDLE hThread = OpenThread(THREAD_QUERY_INFORMATION, FALSE, mt->TID);
                 if (hThread) {
                     THREAD_BASIC_INFORMATION tbi;
-                    ZeroMemory(&tbi, sizeof(tbi));
-                    NTSTATUS tstatus = NtQueryInformationThread(
-                        hThread,
-                        ThreadBasicInformation,
-                        &tbi,
-                        sizeof(tbi),
-                        NULL
-                    );
-                    if (NT_SUCCESS(tstatus))
+                    if (NT_SUCCESS(NtQueryInformationThread(hThread, ThreadBasicInformation, &tbi, sizeof(tbi), NULL))) {
                         mt->TebAddress = tbi.TebBaseAddress;
 
+                        // Only safe for threads in our process or threads we can access
+                        if (mt->TebAddress && GetCurrentProcessId() == mt->ParentPID) {
+                            TEB_PARTIAL* teb = (TEB_PARTIAL*)mt->TebAddress;
+                            mt->StackBase = teb->NtTib.StackBase;
+                            mt->StackLimit = teb->NtTib.StackLimit;
+                            mt->TlsPointer = teb->ThreadLocalStoragePointer;
+                            mt->PebAddress = teb->ProcessEnvironmentBlock;
+                            mt->LastErrorValue = teb->LastErrorValue;
+                        }
+                    }
                     CloseHandle(hThread);
                 }
             }
@@ -282,12 +294,11 @@ static BOOL MrtTInfo_QueryCurrentThreadLive(MRT_THREAD_INFO* out)
     if (!out)
         return FALSE;
 
-    HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
-    if (!ntdll)
-        return FALSE;
-
     PFN_NtQueryInformationThread NtQueryInformationThread =
-        (PFN_NtQueryInformationThread)GetProcAddress(ntdll, "NtQueryInformationThread");
+        (PFN_NtQueryInformationThread)GetProcAddress(
+            GetModuleHandleW(L"ntdll.dll"),
+            "NtQueryInformationThread"
+        );
     if (!NtQueryInformationThread)
         return FALSE;
 
@@ -308,13 +319,22 @@ static BOOL MrtTInfo_QueryCurrentThreadLive(MRT_THREAD_INFO* out)
     out->TID = GetCurrentThreadId();
     out->BasePriority = (LONG)tbi.BasePriority;
     out->Priority = (LONG)tbi.Priority;
-    out->TebAddress = tbi.TebBaseAddress; // <-- TEB address added
+    out->TebAddress = tbi.TebBaseAddress;
+
+    // --- Read extra TEB fields safely ---
+    if (out->TebAddress) {
+        TEB_PARTIAL* teb = (TEB_PARTIAL*)out->TebAddress;
+        out->StackBase = teb->NtTib.StackBase;
+        out->StackLimit = teb->NtTib.StackLimit;
+        out->TlsPointer = teb->ThreadLocalStoragePointer;
+        out->PebAddress = teb->ProcessEnvironmentBlock;
+        out->LastErrorValue = teb->LastErrorValue;
+    }
 
     // Live thread → always running
     out->ThreadState = Running;
     out->WaitReason  = Executive;
 
-    // Kernel/User times are unknown for live thread snapshot
     out->KernelTime.QuadPart = 0;
     out->UserTime.QuadPart = 0;
     out->ContextSwitches = 0;
