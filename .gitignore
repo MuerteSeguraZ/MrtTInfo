@@ -1,0 +1,4 @@
+# ignore non-relevant files and vscode config
+.vscode/
+*.exe
+*.o
