@@ -1,14 +1,10 @@
 #include <windows.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <wchar.h>
 #include "MrtTInfo.h"
 
 // --- Mirrored Windows 6.x structures ---
-
-typedef enum MRT_SYSTEM_INFORMATION_CLASS {
-    MrtSystemProcessInformation = 5
-} MRT_SYSTEM_INFORMATION_CLASS;
-
 typedef struct MRT_CLIENT_ID {
     HANDLE UniqueProcess;
     HANDLE UniqueThread;
@@ -27,6 +23,15 @@ typedef struct MRT_SYSTEM_THREAD_INFORMATION {
     ULONG ThreadState;
     ULONG WaitReason;
 } MRT_SYSTEM_THREAD_INFORMATION;
+
+typedef struct _THREAD_BASIC_INFORMATION {
+    NTSTATUS ExitStatus;
+    PVOID TebBaseAddress;
+    MRT_CLIENT_ID ClientId;
+    ULONG_PTR AffinityMask;
+    LONG Priority;
+    LONG BasePriority;
+} THREAD_BASIC_INFORMATION;
 
 typedef struct MRT_SYSTEM_PROCESS_INFORMATION {
     ULONG NextEntryOffset;
@@ -59,14 +64,6 @@ typedef struct MRT_SYSTEM_PROCESS_INFORMATION {
     IO_COUNTERS IoCounters;
     MRT_SYSTEM_THREAD_INFORMATION Threads[1];
 } MRT_SYSTEM_PROCESS_INFORMATION;
-
-// --- Function pointer to NtQuerySystemInformation ---
-typedef NTSTATUS (NTAPI *PFN_NTQUERYSYSTEMINFORMATION)(
-    MRT_SYSTEM_INFORMATION_CLASS SystemInformationClass,
-    PVOID SystemInformation,
-    ULONG SystemInformationLength,
-    PULONG ReturnLength
-);
 
 // --- Helper union for strict aliasing ---
 typedef union {
@@ -256,4 +253,101 @@ wchar_t* MrtTInfo_UnicodeStringToWString(UNICODE_STRING* ustr) {
     wcsncpy(str, ustr->Buffer, len);
     str[len] = L'\0';
     return str;
+}
+
+static BOOL MrtTInfo_QueryCurrentThreadLive(MRT_THREAD_INFO* out)
+{
+    if (!out)
+        return FALSE;
+
+    PFN_NtQueryInformationThread NtQueryInformationThread = NULL;
+        if (!NtQueryInformationThread) {
+            NtQueryInformationThread = (PFN_NtQueryInformationThread)GetProcAddress(
+                GetModuleHandleW(L"ntdll.dll"),
+                "NtQueryInformationThread"
+            );
+            if (!NtQueryInformationThread)
+                return FALSE;
+        }
+
+    THREAD_BASIC_INFORMATION tbi;
+    ZeroMemory(&tbi, sizeof(tbi));
+    NTSTATUS status = NtQueryInformationThread(
+        GetCurrentThread(),
+        ThreadBasicInformation,
+        &tbi,
+        sizeof(tbi),
+        NULL
+    );
+
+    if (!NT_SUCCESS(status))
+        return FALSE;
+
+    out->TID = GetCurrentThreadId();
+    out->BasePriority = (LONG)tbi.BasePriority;
+
+    // Live thread → always running
+    out->ThreadState = Running;
+    out->WaitReason  = Executive;
+
+    return TRUE;
+}
+
+// ---------------------------------------------------------------------------
+// Find a process by its PID within the array returned by MrtTInfo_GetAllProcesses.
+// Returns a pointer to the process structure, or NULL if not found.
+// ---------------------------------------------------------------------------
+MRT_PROCESS_INFO* MrtTInfo_FindProcessByPID(
+    MRT_PROCESS_INFO* processes,
+    ULONG count,
+    DWORD pid
+)
+{
+    if (!processes || count == 0)
+        return NULL;
+
+    for (ULONG i = 0; i < count; i++) {
+        if (processes[i].PID == pid)
+            return &processes[i];
+    }
+
+    return NULL;
+}
+
+// ---------------------------------------------------------------------------
+// Find a thread by its TID across all processes in the array returned by
+// MrtTInfo_GetAllProcesses. Returns a pointer to the thread structure,
+// or NULL if not found.
+// ---------------------------------------------------------------------------
+MRT_THREAD_INFO* MrtTInfo_FindThreadByTID(
+    MRT_PROCESS_INFO* processes,
+    ULONG count,
+    DWORD tid
+)
+{
+    if (!processes || count == 0)
+        return NULL;
+
+    // 1) Try snapshot first (fast path)
+    for (ULONG i = 0; i < count; i++) {
+        MRT_PROCESS_INFO* proc = &processes[i];
+        if (!proc->Threads || proc->ThreadCount == 0)
+            continue;
+
+        for (ULONG t = 0; t < proc->ThreadCount; t++) {
+            if (proc->Threads[t].TID == tid)
+                return &proc->Threads[t];
+        }
+    }
+
+    // 2) If it's the current thread, query live
+    if (tid == GetCurrentThreadId()) {
+        static MRT_THREAD_INFO liveThread;
+        ZeroMemory(&liveThread, sizeof(liveThread));
+
+        if (MrtTInfo_QueryCurrentThreadLive(&liveThread))
+            return &liveThread;
+    }
+
+    return NULL;
 }

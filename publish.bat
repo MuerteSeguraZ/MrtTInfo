@@ -3,7 +3,7 @@
 git add --all
 
 set "MSG=%~1"
-if "%MSG%"=="" set "MSG=WaitReason and ThreadState readable strings"
+if "%MSG%"=="" set "MSG=PID & TID lookup"
 
 git status
 

@@ -1,7 +1,11 @@
 #pragma once
 #include <windows.h>
 #include <stdlib.h>
-#include "MrtTInfo.h"
+
+// -----------------------------
+// Basic NTSTATUS and macros
+// -----------------------------
+typedef LONG NTSTATUS;
 
 #ifndef STATUS_SUCCESS
 #define STATUS_SUCCESS ((NTSTATUS)0x00000000L)
@@ -9,16 +13,22 @@
 #ifndef NT_SUCCESS
 #define NT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
 #endif
-#ifndef STATUS_INFO_LENGTH_MISMATCH
 #define STATUS_INFO_LENGTH_MISMATCH ((NTSTATUS)0xC0000004L)
-#endif
-#ifndef STATUS_PROCEDURE_NOT_FOUND
-#define STATUS_PROCEDURE_NOT_FOUND ((NTSTATUS)0xC000007FL)
-#endif
+#define STATUS_PROCEDURE_NOT_FOUND  ((NTSTATUS)0xC000007FL)
+#define STATUS_INVALID_PARAMETER     ((NTSTATUS)0xC000000DL)
+#define STATUS_DLL_NOT_FOUND         ((NTSTATUS)0xC0000135L)
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#define Running    2
+#define Executive  0
+
+// -----------------------------
+// Minimal structures and enums
+// -----------------------------
+typedef enum _MRT_SYSTEM_INFORMATION_CLASS {
+    MrtSystemProcessInformation = 5
+} MRT_SYSTEM_INFORMATION_CLASS;
+
+#define ThreadBasicInformation 0
 
 typedef struct _UNICODE_STRING {
     USHORT Length;
@@ -26,6 +36,9 @@ typedef struct _UNICODE_STRING {
     PWSTR  Buffer;
 } UNICODE_STRING;
 
+// -----------------------------
+// Thread & process info structs
+// -----------------------------
 typedef struct _MRT_THREAD_INFO {
     DWORD TID;
     DWORD ParentPID;
@@ -65,19 +78,38 @@ typedef struct _MRT_PROCESS_INFO {
     MRT_THREAD_INFO* Threads;
 } MRT_PROCESS_INFO;
 
-// Allocates and fills MRT_PROCESS_INFO array
-// *Processes: output pointer, needs free() by caller
-// *Count: number of processes returned
+// -----------------------------
+// Function pointer typedefs
+// -----------------------------
+typedef NTSTATUS (NTAPI *PFN_NTQUERYSYSTEMINFORMATION)(
+    MRT_SYSTEM_INFORMATION_CLASS SystemInformationClass,
+    PVOID SystemInformation,
+    ULONG SystemInformationLength,
+    PULONG ReturnLength
+);
+
+typedef NTSTATUS (NTAPI *PFN_NtQueryInformationThread)(
+    HANDLE ThreadHandle,
+    int ThreadInformationClass, // THREADINFOCLASS
+    PVOID ThreadInformation,
+    ULONG ThreadInformationLength,
+    PULONG ReturnLength
+);
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+// -----------------------------
+// API declarations
+// -----------------------------
 NTSTATUS MrtTInfo_GetAllProcesses(MRT_PROCESS_INFO** Processes, ULONG* Count);
-
 void MrtTInfo_FreeProcesses(MRT_PROCESS_INFO* Processes, ULONG Count);
-
-// Converts UNICODE_STRING to null-terminated wchar_t*.
-// Returns a malloc'd string, must be free() by caller.
 wchar_t* MrtTInfo_UnicodeStringToWString(UNICODE_STRING* ustr);
-
 const char* WaitReasonToString(ULONG reason);
 const char* ThreadStateToString(ULONG state);
+MRT_PROCESS_INFO* MrtTInfo_FindProcessByPID(MRT_PROCESS_INFO* processes, ULONG count, DWORD pid);
+MRT_THREAD_INFO* MrtTInfo_FindThreadByTID(MRT_PROCESS_INFO* processes, ULONG count, DWORD tid);
 
 #ifdef __cplusplus
 }

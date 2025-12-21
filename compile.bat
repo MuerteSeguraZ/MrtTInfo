@@ -10,7 +10,7 @@ REM Output executable
 set OUTPUT=MrtTInfoTest.exe
 
 REM Compile command
-gcc -std=c11 -Wall -O2 -municode %SOURCES% -o %OUTPUT% -lntdll
+gcc -std=c11 -Wall -O2 -mconsole %SOURCES% -o %OUTPUT% -lntdll
 
 IF %ERRORLEVEL% EQU 0 (
     echo Build succeeded: %OUTPUT%
