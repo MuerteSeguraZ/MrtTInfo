@@ -6,6 +6,8 @@
 // Basic NTSTATUS and macros
 // -----------------------------
 typedef LONG NTSTATUS;
+typedef ULONG MRT_THREAD_STATE;
+typedef ULONG MRT_WAIT_REASON;
 
 #ifndef STATUS_SUCCESS
 #define STATUS_SUCCESS ((NTSTATUS)0x00000000L)
@@ -13,10 +15,90 @@ typedef LONG NTSTATUS;
 #ifndef NT_SUCCESS
 #define NT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
 #endif
+#ifndef STATUS_INFO_LENGTH_MISMATCH
 #define STATUS_INFO_LENGTH_MISMATCH ((NTSTATUS)0xC0000004L)
+#endif
+#ifndef STATUS_PROCEDURE_NOT_FOUND
 #define STATUS_PROCEDURE_NOT_FOUND  ((NTSTATUS)0xC000007FL)
+#endif
+#ifndef STATUS_INVALID_PARAMETER
 #define STATUS_INVALID_PARAMETER     ((NTSTATUS)0xC000000DL)
+#endif
+#ifndef STATUS_DLL_NOT_FOUND
 #define STATUS_DLL_NOT_FOUND         ((NTSTATUS)0xC0000135L)
+#endif
+#ifndef STATUS_UNSUCCESSFUL
+#define STATUS_UNSUCCESSFUL              ((NTSTATUS)0xC0000001L)
+#endif
+#ifndef STATUS_NOT_IMPLEMENTED
+#define STATUS_NOT_IMPLEMENTED           ((NTSTATUS)0xC0000002L)
+#endif
+#ifndef STATUS_INVALID_INFO_CLASS
+#define STATUS_INVALID_INFO_CLASS        ((NTSTATUS)0xC0000003L)
+#endif
+#ifndef STATUS_ACCESS_VIOLATION
+#define STATUS_ACCESS_VIOLATION          ((NTSTATUS)0xC0000005L)
+#endif
+#ifndef STATUS_INVALID_HANDLE
+#define STATUS_INVALID_HANDLE            ((NTSTATUS)0xC0000008L)
+#endif
+#ifndef STATUS_OBJECT_NAME_NOT_FOUND
+#define STATUS_OBJECT_NAME_NOT_FOUND     ((NTSTATUS)0xC0000034L)
+#endif
+#ifndef STATUS_OBJECT_PATH_NOT_FOUND
+#define STATUS_OBJECT_PATH_NOT_FOUND     ((NTSTATUS)0xC000003AL)
+#endif
+#ifndef STATUS_OBJECT_NAME_COLLISION
+#define STATUS_OBJECT_NAME_COLLISION     ((NTSTATUS)0xC0000035L)
+#endif
+#ifndef STATUS_ACCESS_DENIED
+#define STATUS_ACCESS_DENIED             ((NTSTATUS)0xC0000022L)
+#endif
+#ifndef STATUS_BUFFER_TOO_SMALL
+#define STATUS_BUFFER_TOO_SMALL          ((NTSTATUS)0xC0000023L)
+#endif
+#ifndef STATUS_OBJECT_TYPE_MISMATCH
+#define STATUS_OBJECT_TYPE_MISMATCH      ((NTSTATUS)0xC0000024L)
+#endif
+#ifndef STATUS_NOT_SUPPORTED
+#define STATUS_NOT_SUPPORTED             ((NTSTATUS)0xC00000BBL)
+#endif
+#ifndef STATUS_PROCESS_IS_TERMINATING
+#define STATUS_PROCESS_IS_TERMINATING    ((NTSTATUS)0xC000010AL)
+#endif
+#ifndef STATUS_THREAD_IS_TERMINATING
+#define STATUS_THREAD_IS_TERMINATING     ((NTSTATUS)0xC000004BL)
+#endif
+#ifndef STATUS_INSUFFICIENT_RESOURCES
+#define STATUS_INSUFFICIENT_RESOURCES    ((NTSTATUS)0xC000009AL)
+#endif
+#ifndef STATUS_NO_MEMORY
+#define STATUS_NO_MEMORY                 ((NTSTATUS)0xC0000017L)
+#endif
+#ifndef STATUS_INVALID_PARAMETER_1
+#define STATUS_INVALID_PARAMETER_1       ((NTSTATUS)0xC00000EFL)
+#endif
+#ifndef STATUS_INVALID_PARAMETER_2
+#define STATUS_INVALID_PARAMETER_2       ((NTSTATUS)0xC00000F0L)
+#endif
+#ifndef STATUS_INVALID_PARAMETER_3
+#define STATUS_INVALID_PARAMETER_3       ((NTSTATUS)0xC00000F1L)
+#endif
+#ifndef STATUS_INVALID_PARAMETER_4
+#define STATUS_INVALID_PARAMETER_4       ((NTSTATUS)0xC00000F2L)
+#endif
+#ifndef STATUS_INVALID_PARAMETER_5
+#define STATUS_INVALID_PARAMETER_5       ((NTSTATUS)0xC00000F3L)
+#endif
+#ifndef STATUS_INVALID_PARAMETER_6
+#define STATUS_INVALID_PARAMETER_6       ((NTSTATUS)0xC00000F4L)
+#endif
+#ifndef STATUS_INVALID_PARAMETER_7
+#define STATUS_INVALID_PARAMETER_7       ((NTSTATUS)0xC00000F5L)
+#endif
+#ifndef STATUS_INVALID_PARAMETER_8
+#define STATUS_INVALID_PARAMETER_8       ((NTSTATUS)0xC00000F6L)
+#endif
 
 #define Running    2
 #define Executive  0
@@ -48,8 +130,8 @@ typedef struct _MRT_THREAD_INFO {
     LONG BasePriority;
     LONG Priority;
     ULONG ContextSwitches;
-    ULONG ThreadState;
-    ULONG WaitReason;
+    MRT_THREAD_STATE ThreadState;
+    MRT_WAIT_REASON WaitReason;
     PVOID StartAddress;
     PVOID TebAddress;
     PVOID StackBase;
@@ -57,6 +139,10 @@ typedef struct _MRT_THREAD_INFO {
     PVOID TlsPointer;
     PVOID PebAddress;
     ULONG LastErrorValue;
+    PVOID ArbitraryUserPointer;          
+    ULONG CountOfOwnedCriticalSections; 
+    PVOID Win32ThreadInfo;             
+    ULONG TLSSlotCount;                 
 } MRT_THREAD_INFO;
 
 typedef struct _MRT_PROCESS_INFO {
@@ -97,6 +183,8 @@ typedef struct _TEB_PARTIAL {
     PVOID ThreadLocalStoragePointer;
     PVOID ProcessEnvironmentBlock;
     ULONG LastErrorValue;
+    PVOID Win32ThreadInfo;            
+    ULONG CountOfOwnedCriticalSections; 
 } TEB_PARTIAL;
 
 typedef struct MRT_SYSTEM_THREAD_INFORMATION {
@@ -109,8 +197,8 @@ typedef struct MRT_SYSTEM_THREAD_INFORMATION {
     LONG Priority;
     LONG BasePriority;
     ULONG ContextSwitches;
-    ULONG ThreadState;
-    ULONG WaitReason;
+    MRT_THREAD_STATE ThreadState;
+    MRT_WAIT_REASON WaitReason;
 } MRT_SYSTEM_THREAD_INFORMATION;
 
 typedef struct _THREAD_BASIC_INFORMATION {
@@ -187,8 +275,8 @@ extern "C" {
 NTSTATUS MrtTInfo_GetAllProcesses(MRT_PROCESS_INFO** Processes, ULONG* Count);
 void MrtTInfo_FreeProcesses(MRT_PROCESS_INFO* Processes, ULONG Count);
 wchar_t* MrtTInfo_UnicodeStringToWString(UNICODE_STRING* ustr);
-const char* WaitReasonToString(ULONG reason);
-const char* ThreadStateToString(ULONG state);
+const char* WaitReasonToString(MRT_WAIT_REASON reason);
+const char* ThreadStateToString(MRT_THREAD_STATE state);
 MRT_PROCESS_INFO* MrtTInfo_FindProcessByPID(MRT_PROCESS_INFO* processes, ULONG count, DWORD pid);
 MRT_THREAD_INFO* MrtTInfo_FindThreadByTID(MRT_PROCESS_INFO* processes, ULONG count, DWORD tid);
 

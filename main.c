@@ -37,7 +37,9 @@ int main(void)
         // print first few threads
         for (ULONG t = 0; t < p->ThreadCount && t < 3; t++) {
             MRT_THREAD_INFO* th = &p->Threads[t];
-            wprintf(L"      TID: %-6lu  BasePrio: %-2ld  State: %-15hs  Wait: %-15hs  TEB: %p  Stack: %p-%p  TLS: %p  PEB: %p  LastErr: %lu\n",
+            wprintf(L"      TID: %-6lu  BasePrio: %-2ld  State: %-15hs  Wait: %-15hs  "
+                    L"TEB: %p  Stack: %p-%p  TLS: %p  PEB: %p  LastErr: %lu  "
+                    L"ArbPtr: %p  OwnedCS: %-3lu  Win32Info: %p  TLSCount: %-3lu\n",
                     th->TID,
                     th->BasePriority,
                     ThreadStateToString(th->ThreadState),
@@ -47,7 +49,11 @@ int main(void)
                     th->StackLimit,
                     th->TlsPointer,
                     th->PebAddress,
-                    th->LastErrorValue);
+                    th->LastErrorValue,
+                    th->ArbitraryUserPointer,
+                    th->CountOfOwnedCriticalSections,
+                    th->Win32ThreadInfo,
+                    th->TLSSlotCount);
         }
 
         wprintf(L"\n");

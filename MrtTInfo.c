@@ -58,18 +58,44 @@ const char* WaitReasonToString(ULONG reason) {
     }
 }
 
-NTSTATUS MrtTInfo_GetAllProcesses(MRT_PROCESS_INFO** Processes, ULONG* Count) {
-    if (!Processes || !Count) return STATUS_INVALID_PARAMETER;
+// Walk TLS slots and count how many are actually used
+ULONG CountTLSSlots(PVOID tlsPointer)
+{
+    if (!tlsPointer)
+        return 0;
+
+    ULONG count = 0;
+    PVOID* tlsArray = (PVOID*)tlsPointer;
+
+    // Windows 7 has 108 TLS slots
+    for (ULONG i = 0; i < 108; i++) {
+        // Count a slot as "used" if it's non-NULL or reserved (optional)
+        if (tlsArray[i] != NULL)
+            count++;
+    }
+    return count;
+}
+
+
+NTSTATUS MrtTInfo_GetAllProcesses(MRT_PROCESS_INFO** Processes, ULONG* Count)
+{
+    if (!Processes || !Count)
+        return STATUS_INVALID_PARAMETER;
+
     *Processes = NULL;
     *Count = 0;
 
     HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
-    if (!ntdll) return STATUS_DLL_NOT_FOUND;
+    if (!ntdll)
+        return STATUS_DLL_NOT_FOUND;
 
     PFN_NTQUERYSYSTEMINFORMATION NtQuerySystemInformation =
-        (PFN_NTQUERYSYSTEMINFORMATION)GetProcAddress(ntdll, "NtQuerySystemInformation");
+        (PFN_NTQUERYSYSTEMINFORMATION)GetProcAddress(
+            ntdll, "NtQuerySystemInformation");
+
     PFN_NtQueryInformationThread NtQueryInformationThread =
-        (PFN_NtQueryInformationThread)GetProcAddress(ntdll, "NtQueryInformationThread");
+        (PFN_NtQueryInformationThread)GetProcAddress(
+            ntdll, "NtQueryInformationThread");
 
     if (!NtQuerySystemInformation || !NtQueryInformationThread)
         return STATUS_PROCEDURE_NOT_FOUND;
@@ -80,7 +106,8 @@ NTSTATUS MrtTInfo_GetAllProcesses(MRT_PROCESS_INFO** Processes, ULONG* Count) {
 
     do {
         buffer = (MRT_SYSTEM_PROCESS_INFORMATION*)malloc(bufferSize);
-        if (!buffer) return STATUS_NO_MEMORY;
+        if (!buffer)
+            return STATUS_NO_MEMORY;
 
         status = NtQuerySystemInformation(
             MrtSystemProcessInformation,
@@ -95,18 +122,21 @@ NTSTATUS MrtTInfo_GetAllProcesses(MRT_PROCESS_INFO** Processes, ULONG* Count) {
         }
     } while (status == STATUS_INFO_LENGTH_MISMATCH);
 
-    if (!NT_SUCCESS(status)) return status;
+    if (!NT_SUCCESS(status))
+        return status;
 
     // Count processes
     ULONG processCount = 0;
     MRT_SYSTEM_PROCESS_INFORMATION* p = buffer;
     while (1) {
         processCount++;
-        if (!p->NextEntryOffset) break;
+        if (!p->NextEntryOffset)
+            break;
         p = (MRT_SYSTEM_PROCESS_INFORMATION*)((BYTE*)p + p->NextEntryOffset);
     }
 
-    MRT_PROCESS_INFO* procArray = (MRT_PROCESS_INFO*)calloc(processCount, sizeof(MRT_PROCESS_INFO));
+    MRT_PROCESS_INFO* procArray =
+        (MRT_PROCESS_INFO*)calloc(processCount, sizeof(MRT_PROCESS_INFO));
     if (!procArray) {
         free(buffer);
         return STATUS_NO_MEMORY;
@@ -117,66 +147,85 @@ NTSTATUS MrtTInfo_GetAllProcesses(MRT_PROCESS_INFO** Processes, ULONG* Count) {
     for (ULONG i = 0; i < processCount; i++) {
         MRT_PROCESS_INFO* mp = &procArray[i];
 
-        mp->PID = (DWORD)(ULONG_PTR)p->UniqueProcessId;
+        mp->PID       = (DWORD)(ULONG_PTR)p->UniqueProcessId;
         mp->ParentPID = (DWORD)(ULONG_PTR)p->InheritedFromUniqueProcessId;
         mp->ImageName = p->ImageName;
+
         LARGE_INTEGER_TO_FILETIME u;
         u.li = p->CreateTime;
         mp->CreateTime = u.ft;
-        mp->UserTime = p->UserTime;
-        mp->KernelTime = p->KernelTime;
-        mp->WorkingSetSize = p->WorkingSetSize;
-        mp->VirtualSize = p->VirtualSize;
-        mp->PeakWorkingSetSize = p->PeakWorkingSetSize;
-        mp->PrivatePageCount = p->PrivatePageCount;
-        mp->HandleCount = p->HandleCount;
-        mp->BasePriority = p->BasePriority;
-        mp->IoCounters = p->IoCounters;
 
-        mp->SessionId = p->SessionId;
-        mp->CycleTime = p->CycleTime;
-        mp->HardFaultCount = p->HardFaultCount;
-        mp->PeakVirtualSize = p->PeakVirtualSize;
-        mp->PageFaultCount = p->PageFaultCount;
+        mp->UserTime          = p->UserTime;
+        mp->KernelTime        = p->KernelTime;
+        mp->WorkingSetSize    = p->WorkingSetSize;
+        mp->VirtualSize       = p->VirtualSize;
+        mp->PeakWorkingSetSize= p->PeakWorkingSetSize;
+        mp->PrivatePageCount  = p->PrivatePageCount;
+        mp->HandleCount       = p->HandleCount;
+        mp->BasePriority      = p->BasePriority;
+        mp->IoCounters        = p->IoCounters;
 
+        mp->SessionId         = p->SessionId;
+        mp->CycleTime         = p->CycleTime;
+        mp->HardFaultCount    = p->HardFaultCount;
+        mp->PeakVirtualSize   = p->PeakVirtualSize;
+        mp->PageFaultCount    = p->PageFaultCount;
         mp->ThreadCount = p->NumberOfThreads;
         if (mp->ThreadCount) {
-            mp->Threads = (MRT_THREAD_INFO*)calloc(mp->ThreadCount, sizeof(MRT_THREAD_INFO));
+            mp->Threads = (MRT_THREAD_INFO*)
+                calloc(mp->ThreadCount, sizeof(MRT_THREAD_INFO));
+
             for (ULONG t = 0; t < mp->ThreadCount; t++) {
                 MRT_SYSTEM_THREAD_INFORMATION* st = &p->Threads[t];
                 MRT_THREAD_INFO* mt = &mp->Threads[t];
 
-                mt->TID = (DWORD)(ULONG_PTR)st->ClientId.UniqueThread;
+                mt->TID       = (DWORD)(ULONG_PTR)st->ClientId.UniqueThread;
                 mt->ParentPID = (DWORD)(ULONG_PTR)st->ClientId.UniqueProcess;
 
                 u.li = st->CreateTime;
                 mt->CreateTime = u.ft;
 
-                mt->KernelTime = st->KernelTime;
-                mt->UserTime = st->UserTime;
-                mt->BasePriority = st->BasePriority;
-                mt->Priority = st->Priority;
+                mt->KernelTime      = st->KernelTime;
+                mt->UserTime        = st->UserTime;
+                mt->BasePriority    = st->BasePriority;
+                mt->Priority        = st->Priority;
                 mt->ContextSwitches = st->ContextSwitches;
-                mt->ThreadState = st->ThreadState;
-                mt->WaitReason = st->WaitReason;
+                mt->ThreadState     = st->ThreadState;
+                mt->WaitReason      = st->WaitReason;
                 mt->StartAddress = st->StartAddress;
-                mt->TebAddress = NULL; // default
+                mt->TebAddress = NULL;
 
                 // --- TEB extraction ---
-                HANDLE hThread = OpenThread(THREAD_QUERY_INFORMATION, FALSE, mt->TID);
+                HANDLE hThread =
+                    OpenThread(THREAD_QUERY_INFORMATION, FALSE, mt->TID);
+
                 if (hThread) {
                     THREAD_BASIC_INFORMATION tbi;
-                    if (NT_SUCCESS(NtQueryInformationThread(hThread, ThreadBasicInformation, &tbi, sizeof(tbi), NULL))) {
+                    if (NT_SUCCESS(
+                        NtQueryInformationThread(
+                            hThread,
+                            ThreadBasicInformation,
+                            &tbi,
+                            sizeof(tbi),
+                            NULL)))
+                    {
                         mt->TebAddress = tbi.TebBaseAddress;
 
-                        // Only safe for threads in our process or threads we can access
-                        if (mt->TebAddress && GetCurrentProcessId() == mt->ParentPID) {
-                            TEB_PARTIAL* teb = (TEB_PARTIAL*)mt->TebAddress;
-                            mt->StackBase = teb->NtTib.StackBase;
-                            mt->StackLimit = teb->NtTib.StackLimit;
-                            mt->TlsPointer = teb->ThreadLocalStoragePointer;
-                            mt->PebAddress = teb->ProcessEnvironmentBlock;
+                        if (mt->TebAddress &&
+                            mt->ParentPID == GetCurrentProcessId())
+                        {
+                            TEB_PARTIAL* teb =
+                                (TEB_PARTIAL*)mt->TebAddress;
+
+                            mt->StackBase      = teb->NtTib.StackBase;
+                            mt->StackLimit     = teb->NtTib.StackLimit;
+                            mt->TlsPointer     = teb->ThreadLocalStoragePointer;
+                            mt->PebAddress     = teb->ProcessEnvironmentBlock;
                             mt->LastErrorValue = teb->LastErrorValue;
+                            mt->ArbitraryUserPointer          = teb->NtTib.ArbitraryUserPointer;
+                            mt->CountOfOwnedCriticalSections  = teb->CountOfOwnedCriticalSections;
+                            mt->Win32ThreadInfo               = teb->Win32ThreadInfo;
+                            mt->TLSSlotCount = CountTLSSlots(mt->TlsPointer);
                         }
                     }
                     CloseHandle(hThread);
@@ -184,8 +233,11 @@ NTSTATUS MrtTInfo_GetAllProcesses(MRT_PROCESS_INFO** Processes, ULONG* Count) {
             }
         }
 
-        if (!p->NextEntryOffset) break;
-        p = (MRT_SYSTEM_PROCESS_INFORMATION*)((BYTE*)p + p->NextEntryOffset);
+        if (!p->NextEntryOffset)
+            break;
+
+        p = (MRT_SYSTEM_PROCESS_INFORMATION*)
+            ((BYTE*)p + p->NextEntryOffset);
     }
 
     *Processes = procArray;
