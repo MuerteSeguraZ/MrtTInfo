@@ -51,6 +51,7 @@ typedef struct _MRT_THREAD_INFO {
     ULONG ThreadState;
     ULONG WaitReason;
     PVOID StartAddress;
+    PVOID TebAddress; // <-- new field
 } MRT_THREAD_INFO;
 
 typedef struct _MRT_PROCESS_INFO {

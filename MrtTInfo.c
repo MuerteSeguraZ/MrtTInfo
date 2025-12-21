@@ -136,7 +136,11 @@ NTSTATUS MrtTInfo_GetAllProcesses(MRT_PROCESS_INFO** Processes, ULONG* Count) {
 
     PFN_NTQUERYSYSTEMINFORMATION NtQuerySystemInformation =
         (PFN_NTQUERYSYSTEMINFORMATION)GetProcAddress(ntdll, "NtQuerySystemInformation");
-    if (!NtQuerySystemInformation) return STATUS_PROCEDURE_NOT_FOUND;
+    PFN_NtQueryInformationThread NtQueryInformationThread =
+        (PFN_NtQueryInformationThread)GetProcAddress(ntdll, "NtQueryInformationThread");
+
+    if (!NtQuerySystemInformation || !NtQueryInformationThread)
+        return STATUS_PROCEDURE_NOT_FOUND;
 
     ULONG bufferSize = 0x10000;
     MRT_SYSTEM_PROCESS_INFORMATION* buffer = NULL;
@@ -197,7 +201,6 @@ NTSTATUS MrtTInfo_GetAllProcesses(MRT_PROCESS_INFO** Processes, ULONG* Count) {
         mp->BasePriority = p->BasePriority;
         mp->IoCounters = p->IoCounters;
 
-        // Additional fields for convenience
         mp->SessionId = p->SessionId;
         mp->CycleTime = p->CycleTime;
         mp->HardFaultCount = p->HardFaultCount;
@@ -225,6 +228,25 @@ NTSTATUS MrtTInfo_GetAllProcesses(MRT_PROCESS_INFO** Processes, ULONG* Count) {
                 mt->ThreadState = st->ThreadState;
                 mt->WaitReason = st->WaitReason;
                 mt->StartAddress = st->StartAddress;
+                mt->TebAddress = NULL; // default
+
+                // --- TEB extraction ---
+                HANDLE hThread = OpenThread(THREAD_QUERY_INFORMATION, FALSE, mt->TID);
+                if (hThread) {
+                    THREAD_BASIC_INFORMATION tbi;
+                    ZeroMemory(&tbi, sizeof(tbi));
+                    NTSTATUS tstatus = NtQueryInformationThread(
+                        hThread,
+                        ThreadBasicInformation,
+                        &tbi,
+                        sizeof(tbi),
+                        NULL
+                    );
+                    if (NT_SUCCESS(tstatus))
+                        mt->TebAddress = tbi.TebBaseAddress;
+
+                    CloseHandle(hThread);
+                }
             }
         }
 
@@ -260,18 +282,18 @@ static BOOL MrtTInfo_QueryCurrentThreadLive(MRT_THREAD_INFO* out)
     if (!out)
         return FALSE;
 
-    PFN_NtQueryInformationThread NtQueryInformationThread = NULL;
-        if (!NtQueryInformationThread) {
-            NtQueryInformationThread = (PFN_NtQueryInformationThread)GetProcAddress(
-                GetModuleHandleW(L"ntdll.dll"),
-                "NtQueryInformationThread"
-            );
-            if (!NtQueryInformationThread)
-                return FALSE;
-        }
+    HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+    if (!ntdll)
+        return FALSE;
+
+    PFN_NtQueryInformationThread NtQueryInformationThread =
+        (PFN_NtQueryInformationThread)GetProcAddress(ntdll, "NtQueryInformationThread");
+    if (!NtQueryInformationThread)
+        return FALSE;
 
     THREAD_BASIC_INFORMATION tbi;
     ZeroMemory(&tbi, sizeof(tbi));
+
     NTSTATUS status = NtQueryInformationThread(
         GetCurrentThread(),
         ThreadBasicInformation,
@@ -285,10 +307,18 @@ static BOOL MrtTInfo_QueryCurrentThreadLive(MRT_THREAD_INFO* out)
 
     out->TID = GetCurrentThreadId();
     out->BasePriority = (LONG)tbi.BasePriority;
+    out->Priority = (LONG)tbi.Priority;
+    out->TebAddress = tbi.TebBaseAddress; // <-- TEB address added
 
     // Live thread → always running
     out->ThreadState = Running;
     out->WaitReason  = Executive;
+
+    // Kernel/User times are unknown for live thread snapshot
+    out->KernelTime.QuadPart = 0;
+    out->UserTime.QuadPart = 0;
+    out->ContextSwitches = 0;
+    out->StartAddress = NULL;
 
     return TRUE;
 }
