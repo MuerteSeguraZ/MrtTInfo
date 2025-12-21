@@ -84,6 +84,81 @@ typedef struct _MRT_PROCESS_INFO {
     MRT_THREAD_INFO* Threads;
 } MRT_PROCESS_INFO;
 
+typedef struct MRT_CLIENT_ID {
+    HANDLE UniqueProcess;
+    HANDLE UniqueThread;
+} MRT_CLIENT_ID;
+
+typedef struct _TEB_PARTIAL {
+    NT_TIB NtTib;
+    PVOID EnvironmentPointer;
+    MRT_CLIENT_ID ClientId;
+    PVOID ActiveRpcHandle;
+    PVOID ThreadLocalStoragePointer;
+    PVOID ProcessEnvironmentBlock;
+    ULONG LastErrorValue;
+} TEB_PARTIAL;
+
+typedef struct MRT_SYSTEM_THREAD_INFORMATION {
+    LARGE_INTEGER KernelTime;
+    LARGE_INTEGER UserTime;
+    LARGE_INTEGER CreateTime;
+    ULONG WaitTime;
+    PVOID StartAddress;
+    MRT_CLIENT_ID ClientId;
+    LONG Priority;
+    LONG BasePriority;
+    ULONG ContextSwitches;
+    ULONG ThreadState;
+    ULONG WaitReason;
+} MRT_SYSTEM_THREAD_INFORMATION;
+
+typedef struct _THREAD_BASIC_INFORMATION {
+    NTSTATUS ExitStatus;
+    PVOID TebBaseAddress;
+    MRT_CLIENT_ID ClientId;
+    ULONG_PTR AffinityMask;
+    LONG Priority;
+    LONG BasePriority;
+} THREAD_BASIC_INFORMATION;
+
+typedef struct MRT_SYSTEM_PROCESS_INFORMATION {
+    ULONG NextEntryOffset;
+    ULONG NumberOfThreads;
+    LARGE_INTEGER WorkingSetPrivateSize;
+    ULONG HardFaultCount;
+    ULONG NumberOfThreadsHighWatermark;
+    ULONGLONG CycleTime;
+    LARGE_INTEGER CreateTime;
+    LARGE_INTEGER UserTime;
+    LARGE_INTEGER KernelTime;
+    UNICODE_STRING ImageName;
+    LONG BasePriority;
+    HANDLE UniqueProcessId;
+    HANDLE InheritedFromUniqueProcessId;
+    ULONG HandleCount;
+    ULONG SessionId;
+    ULONG_PTR PeakVirtualSize;
+    ULONG_PTR VirtualSize;
+    SIZE_T PageFaultCount;
+    SIZE_T PeakWorkingSetSize;
+    SIZE_T WorkingSetSize;
+    SIZE_T QuotaPeakPagedPoolUsage;
+    SIZE_T QuotaPagedPoolUsage;
+    SIZE_T QuotaPeakNonPagedPoolUsage;
+    SIZE_T QuotaNonPagedPoolUsage;
+    SIZE_T PagefileUsage;
+    SIZE_T PeakPagefileUsage;
+    SIZE_T PrivatePageCount;
+    IO_COUNTERS IoCounters;
+    MRT_SYSTEM_THREAD_INFORMATION Threads[1];
+} MRT_SYSTEM_PROCESS_INFORMATION;
+
+typedef union {
+    LARGE_INTEGER li;
+    FILETIME ft;
+} LARGE_INTEGER_TO_FILETIME;
+
 // -----------------------------
 // Function pointer typedefs
 // -----------------------------

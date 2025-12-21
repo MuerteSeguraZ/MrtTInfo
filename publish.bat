@@ -3,7 +3,7 @@
 git add --all
 
 set "MSG=%~1"
-if "%MSG%"=="" set "MSG=Makefile and overall more tidy (.gitignore)"
+if "%MSG%"=="" set "MSG=typedefs to the header"
 
 git status
 
