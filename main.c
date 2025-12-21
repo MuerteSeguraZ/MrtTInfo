@@ -9,8 +9,8 @@ int main(void)
     NTSTATUS status;
 
     wprintf(L"[MrtTInfo Test]\n\n");
-    
-    Sleep(200); // Give scheduler time to record thread info
+
+    Sleep(200); // give scheduler time to record thread info
     status = MrtTInfo_GetAllProcesses(&processes, &processCount);
     if (!NT_SUCCESS(status)) {
         wprintf(L"Failed to get process info (NTSTATUS 0x%08X)\n", status);
@@ -19,7 +19,7 @@ int main(void)
 
     wprintf(L"Total processes: %lu\n\n", processCount);
 
-    // Print a few basic details
+    // print a few basic details
     for (ULONG i = 0; i < processCount; i++) {
         MRT_PROCESS_INFO* p = &processes[i];
         wchar_t* imageName = MrtTInfo_UnicodeStringToWString(&p->ImageName);
@@ -34,21 +34,22 @@ int main(void)
                 p->HandleCount,
                 p->WorkingSetSize / 1024);
 
-        // Print first few threads
+        // print first few threads
         for (ULONG t = 0; t < p->ThreadCount && t < 3; t++) {
             MRT_THREAD_INFO* th = &p->Threads[t];
-            wprintf(L"      TID: %-6lu  BasePrio: %-2ld  State: %-15hs  Wait: %-15hs\n",
+            wprintf(L"      TID: %-6lu  BasePrio: %-2ld  State: %-15hs  Wait: %-15hs  TEB: %p\n",
                     th->TID,
                     th->BasePriority,
                     ThreadStateToString(th->ThreadState),
-                    WaitReasonToString(th->WaitReason));
+                    WaitReasonToString(th->WaitReason),
+                    th->TebAddress);
         }
 
         wprintf(L"\n");
         free(imageName);
     }
 
-    // Demonstrate lookup helpers
+    // demonstrate lookup helpers
     DWORD testPID = GetCurrentProcessId();
     MRT_PROCESS_INFO* selfProc = MrtTInfo_FindProcessByPID(processes, processCount, testPID);
     if (selfProc) {
@@ -60,17 +61,17 @@ int main(void)
         wprintf(L"[Lookup] Current process not found by PID!\n");
     }
 
-    // Try finding one thread by TID (the current one)
+    // try finding one thread by TID (the current one)
     DWORD tid = GetCurrentThreadId();
     MRT_THREAD_INFO* selfThread = MrtTInfo_FindThreadByTID(processes, processCount, tid);
     if (selfThread) {
-        wprintf(L"[Lookup] Found current thread by TID %lu, base priority %ld\n",
-                tid, selfThread->BasePriority);
+        wprintf(L"[Lookup] Found current thread by TID %lu, base priority %ld, TEB: %p\n",
+                tid, selfThread->BasePriority, selfThread->TebAddress);
     } else {
         wprintf(L"[Lookup] Current thread not found by TID!\n");
     }
 
-    // Cleanup
+    // cleanup
     MrtTInfo_FreeProcesses(processes, processCount);
     wprintf(L"\nDone.\n");
     return 0;
