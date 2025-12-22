@@ -3,7 +3,7 @@
 #include <stdlib.h>
 
 // -----------------------------
-// Basic NTSTATUS and macros
+// basic NTSTATUS and macros
 // -----------------------------
 typedef LONG NTSTATUS;
 typedef ULONG MRT_THREAD_STATE;
