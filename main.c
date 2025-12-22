@@ -39,7 +39,8 @@ int main(void)
             MRT_THREAD_INFO* th = &p->Threads[t];
             wprintf(L"      TID: %-6lu  BasePrio: %-2ld  State: %-15hs  Wait: %-15hs  "
                     L"TEB: %p  Stack: %p-%p  TLS: %p  PEB: %p  LastErr: %lu  "
-                    L"ArbPtr: %p  OwnedCS: %-3lu  Win32Info: %p  TLSCount: %-3lu\n",
+                    L"ArbPtr: %p  OwnedCS: %-3lu  Win32Info: %p  TLSCount: %-3lu\n"
+                    L"Affinity: 0x%p  IdealCPU: %-2lu  CurrCPU: %-2lu\n",
                     th->TID,
                     th->BasePriority,
                     ThreadStateToString(th->ThreadState),
@@ -53,7 +54,10 @@ int main(void)
                     th->ArbitraryUserPointer,
                     th->CountOfOwnedCriticalSections,
                     th->Win32ThreadInfo,
-                    th->TLSSlotCount);
+                    th->TLSSlotCount,
+                    (unsigned long long)th->AffinityMask,
+                    th->IdealProcessor,
+                    th->CurrentProcessor);
         }
 
         wprintf(L"\n");

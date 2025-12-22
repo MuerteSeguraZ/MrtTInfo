@@ -1,4 +1,7 @@
 #pragma once
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0601
+#endif
 #include <windows.h>
 #include <stdlib.h>
 
@@ -6,6 +9,7 @@
 // basic NTSTATUS and macross
 // -----------------------------
 typedef LONG NTSTATUS;
+typedef ULONG_PTR KAFFINITY;
 typedef ULONG MRT_THREAD_STATE;
 typedef ULONG MRT_WAIT_REASON;
 
@@ -142,7 +146,10 @@ typedef struct _MRT_THREAD_INFO {
     PVOID ArbitraryUserPointer;          
     ULONG CountOfOwnedCriticalSections; 
     PVOID Win32ThreadInfo;             
-    ULONG TLSSlotCount;                 
+    ULONG TLSSlotCount;        
+    KAFFINITY AffinityMask;
+    ULONG IdealProcessor;
+    ULONG CurrentProcessor;         
 } MRT_THREAD_INFO;
 
 typedef struct _MRT_PROCESS_INFO {
@@ -264,6 +271,8 @@ typedef NTSTATUS (NTAPI *PFN_NtQueryInformationThread)(
     ULONG ThreadInformationLength,
     PULONG ReturnLength
 );
+
+typedef DWORD (WINAPI *PFN_GetCurrentProcessorNumber)(void);
 
 #ifdef __cplusplus
 extern "C" {

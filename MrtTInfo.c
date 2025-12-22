@@ -5,6 +5,71 @@
 #include "MrtTInfo.h"
 
 // --- Main API ---
+static DWORD WrapGetCurrentProcessorNumber() {
+    static PFN_GetCurrentProcessorNumber pFunc = NULL;
+    if (!pFunc) {
+        HMODULE hKernel = GetModuleHandleA("kernel32.dll");
+        if (hKernel)
+            pFunc = (PFN_GetCurrentProcessorNumber)GetProcAddress(hKernel, "GetCurrentProcessorNumber");
+        if (!pFunc) return 0; // fallback if not available
+    }
+    return pFunc();
+}
+
+static BOOL MrtTInfo_QueryCurrentThreadLive(MRT_THREAD_INFO* out)
+{
+    if (!out)
+        return FALSE;
+
+    PFN_NtQueryInformationThread NtQueryInformationThread =
+        (PFN_NtQueryInformationThread)GetProcAddress(
+            GetModuleHandleW(L"ntdll.dll"),
+            "NtQueryInformationThread"
+        );
+    if (!NtQueryInformationThread)
+        return FALSE;
+
+    THREAD_BASIC_INFORMATION tbi;
+    ZeroMemory(&tbi, sizeof(tbi));
+
+    NTSTATUS status = NtQueryInformationThread(
+        GetCurrentThread(),
+        ThreadBasicInformation,
+        &tbi,
+        sizeof(tbi),
+        NULL
+    );
+
+    if (!NT_SUCCESS(status))
+        return FALSE;
+
+    out->TID = GetCurrentThreadId();
+    out->BasePriority = (LONG)tbi.BasePriority;
+    out->Priority = (LONG)tbi.Priority;
+    out->TebAddress = tbi.TebBaseAddress;
+
+    // --- Read extra TEB fields safely ---
+    if (out->TebAddress) {
+        TEB_PARTIAL* teb = (TEB_PARTIAL*)out->TebAddress;
+        out->StackBase = teb->NtTib.StackBase;
+        out->StackLimit = teb->NtTib.StackLimit;
+        out->TlsPointer = teb->ThreadLocalStoragePointer;
+        out->PebAddress = teb->ProcessEnvironmentBlock;
+        out->LastErrorValue = teb->LastErrorValue;
+    }
+
+    // Live thread → always running
+    out->ThreadState = Running;
+    out->WaitReason  = Executive;
+
+    out->KernelTime.QuadPart = 0;
+    out->UserTime.QuadPart = 0;
+    out->ContextSwitches = 0;
+    out->StartAddress = NULL;
+
+    return TRUE;
+}
+
 const char* ThreadStateToString(ULONG state) {
     switch (state) {
         case 0: return "Initialized";
@@ -59,7 +124,7 @@ const char* WaitReasonToString(ULONG reason) {
 }
 
 // Walk TLS slots and count how many are actually used
-ULONG CountTLSSlots(PVOID tlsPointer)
+static ULONG CountTLSSlots(PVOID tlsPointer)
 {
     if (!tlsPointer)
         return 0;
@@ -227,6 +292,57 @@ NTSTATUS MrtTInfo_GetAllProcesses(MRT_PROCESS_INFO** Processes, ULONG* Count)
                             mt->Win32ThreadInfo               = teb->Win32ThreadInfo;
                             mt->TLSSlotCount = CountTLSSlots(mt->TlsPointer);
                         }
+                        // ---------------- CPU / Affinity info ----------------
+                        if (mt->ParentPID == GetCurrentProcessId()) {
+                            // open thread with proper access
+                            HANDLE hQueryThread = OpenThread(
+                                THREAD_QUERY_INFORMATION | THREAD_SET_INFORMATION,
+                                FALSE,
+                                mt->TID
+                            );
+
+                            if (hQueryThread) {
+                                // ----- Affinity -----
+                                DWORD_PTR oldAffinity = SetThreadAffinityMask(hQueryThread, (DWORD_PTR)-1);
+                                if (oldAffinity != 0) {
+                                    mt->AffinityMask = oldAffinity;
+                                    // restore original affinity
+                                    SetThreadAffinityMask(hQueryThread, oldAffinity);
+                                } else {
+                                    mt->AffinityMask = 0;
+                                }
+
+                                // ----- Ideal Processor -----
+                                DWORD oldIdeal = SetThreadIdealProcessor(hQueryThread, MAXIMUM_PROCESSORS);
+                                if (oldIdeal != (DWORD)-1) {
+                                    mt->IdealProcessor = oldIdeal;
+                                    SetThreadIdealProcessor(hQueryThread, oldIdeal);
+                                } else {
+                                    mt->IdealProcessor = 0;
+                                }
+                        
+                                // ----- Current CPU -----
+                                // Only safe for the calling thread; for others, leave as -1
+                                if (GetCurrentThreadId() == mt->TID) {
+                                    mt->CurrentProcessor = WrapGetCurrentProcessorNumber();
+                                } else {
+                                    mt->CurrentProcessor = (ULONG)-1;
+                                }
+
+                                CloseHandle(hQueryThread);
+                            } else {
+                                // fallback if OpenThread failed
+                                mt->AffinityMask = 0;
+                                mt->IdealProcessor = 0;
+                                mt->CurrentProcessor = (ULONG)-1;
+                            }
+                        } else {
+                            // threads from other processes
+                            mt->AffinityMask = 0;
+                            mt->IdealProcessor = (ULONG)-1;
+                            mt->CurrentProcessor = (ULONG)-1;
+                        }
+
                     }
                     CloseHandle(hThread);
                 }
@@ -261,60 +377,6 @@ wchar_t* MrtTInfo_UnicodeStringToWString(UNICODE_STRING* ustr) {
     wcsncpy(str, ustr->Buffer, len);
     str[len] = L'\0';
     return str;
-}
-
-static BOOL MrtTInfo_QueryCurrentThreadLive(MRT_THREAD_INFO* out)
-{
-    if (!out)
-        return FALSE;
-
-    PFN_NtQueryInformationThread NtQueryInformationThread =
-        (PFN_NtQueryInformationThread)GetProcAddress(
-            GetModuleHandleW(L"ntdll.dll"),
-            "NtQueryInformationThread"
-        );
-    if (!NtQueryInformationThread)
-        return FALSE;
-
-    THREAD_BASIC_INFORMATION tbi;
-    ZeroMemory(&tbi, sizeof(tbi));
-
-    NTSTATUS status = NtQueryInformationThread(
-        GetCurrentThread(),
-        ThreadBasicInformation,
-        &tbi,
-        sizeof(tbi),
-        NULL
-    );
-
-    if (!NT_SUCCESS(status))
-        return FALSE;
-
-    out->TID = GetCurrentThreadId();
-    out->BasePriority = (LONG)tbi.BasePriority;
-    out->Priority = (LONG)tbi.Priority;
-    out->TebAddress = tbi.TebBaseAddress;
-
-    // --- Read extra TEB fields safely ---
-    if (out->TebAddress) {
-        TEB_PARTIAL* teb = (TEB_PARTIAL*)out->TebAddress;
-        out->StackBase = teb->NtTib.StackBase;
-        out->StackLimit = teb->NtTib.StackLimit;
-        out->TlsPointer = teb->ThreadLocalStoragePointer;
-        out->PebAddress = teb->ProcessEnvironmentBlock;
-        out->LastErrorValue = teb->LastErrorValue;
-    }
-
-    // Live thread → always running
-    out->ThreadState = Running;
-    out->WaitReason  = Executive;
-
-    out->KernelTime.QuadPart = 0;
-    out->UserTime.QuadPart = 0;
-    out->ContextSwitches = 0;
-    out->StartAddress = NULL;
-
-    return TRUE;
 }
 
 // ---------------------------------------------------------------------------
