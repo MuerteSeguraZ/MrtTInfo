@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <wchar.h>
 #include "MrtTInfo.h"
+ULONG CountTLSSlots(PVOID tlsPointer);
 
 // --- Main API ---
 static DWORD WrapGetCurrentProcessorNumber() {
@@ -14,6 +15,33 @@ static DWORD WrapGetCurrentProcessorNumber() {
         if (!pFunc) return 0; // fallback if not available
     }
     return pFunc();
+}
+
+void MrtHelper_PrintSEHChain(PVOID exceptionList)
+{
+    if (!exceptionList) {
+        wprintf(L"        ExceptionList: <empty>\n");
+        return;
+    }
+
+    EXCEPTION_REGISTRATION_RECORD* record =
+        (EXCEPTION_REGISTRATION_RECORD*)exceptionList;
+
+    wprintf(L"        SEH chain:\n");
+
+    int index = 0;
+    while (record && index < 32) { // limit to 32 entries to avoid infinite loops
+        wprintf(L"          [%d] Handler: %p  Next: %p\n",
+                index, record->Handler, record->Next);
+
+        if (record->Next <= record) { // sanity check: must go forward in memory
+            wprintf(L"            (terminating walk due to invalid Next)\n");
+            break;
+        }
+
+        record = record->Next;
+        index++;
+    }
 }
 
 static BOOL MrtTInfo_QueryCurrentThreadLive(MRT_THREAD_INFO* out)
@@ -56,6 +84,11 @@ static BOOL MrtTInfo_QueryCurrentThreadLive(MRT_THREAD_INFO* out)
         out->TlsPointer = teb->ThreadLocalStoragePointer;
         out->PebAddress = teb->ProcessEnvironmentBlock;
         out->LastErrorValue = teb->LastErrorValue;
+        out->ArbitraryUserPointer = teb->NtTib.ArbitraryUserPointer;
+        out->CountOfOwnedCriticalSections = teb->CountOfOwnedCriticalSections;
+        out->Win32ThreadInfo = teb->Win32ThreadInfo;
+        out->TLSSlotCount = CountTLSSlots(out->TlsPointer);
+        out->ExceptionList = teb->NtTib.ExceptionList;
     }
 
     // Live thread → always running
@@ -70,7 +103,7 @@ static BOOL MrtTInfo_QueryCurrentThreadLive(MRT_THREAD_INFO* out)
     return TRUE;
 }
 
-const char* ThreadStateToString(ULONG state) {
+const char* MrtHelper_ThreadStateToString(ULONG state) {
     switch (state) {
         case 0: return "Initialized";
         case 1: return "Ready";
@@ -95,7 +128,7 @@ const char* ThreadStateToString(ULONG state) {
     }
 }
 
-const char* WaitReasonToString(ULONG reason) {
+const char* MrtHelper_WaitReasonToString(ULONG reason) {
     switch (reason) {
         case 0: return "Executive";
         case 1: return "FreePage";
@@ -124,7 +157,7 @@ const char* WaitReasonToString(ULONG reason) {
 }
 
 // Walk TLS slots and count how many are actually used
-static ULONG CountTLSSlots(PVOID tlsPointer)
+ULONG CountTLSSlots(PVOID tlsPointer)
 {
     if (!tlsPointer)
         return 0;
@@ -140,7 +173,6 @@ static ULONG CountTLSSlots(PVOID tlsPointer)
     }
     return count;
 }
-
 
 NTSTATUS MrtTInfo_GetAllProcesses(MRT_PROCESS_INFO** Processes, ULONG* Count)
 {
@@ -291,6 +323,7 @@ NTSTATUS MrtTInfo_GetAllProcesses(MRT_PROCESS_INFO** Processes, ULONG* Count)
                             mt->CountOfOwnedCriticalSections  = teb->CountOfOwnedCriticalSections;
                             mt->Win32ThreadInfo               = teb->Win32ThreadInfo;
                             mt->TLSSlotCount = CountTLSSlots(mt->TlsPointer);
+                            mt->ExceptionList = teb->NtTib.ExceptionList;
                         }
                         // ---------------- CPU / Affinity info ----------------
                         if (mt->ParentPID == GetCurrentProcessId()) {

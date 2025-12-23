@@ -3,7 +3,7 @@
 git add --all
 
 set "MSG=%~1"
-if "%MSG%"=="" set "MSG=made some helper funcs static, also added CPU stuff (affinity, ideal CPU, current CPU)"
+if "%MSG%"=="" set "MSG=rename helpers to MrtHelper_*, added ExceptionList to TEB and SEH Walk helper."
 
 git status
 

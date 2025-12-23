@@ -106,6 +106,7 @@ typedef ULONG MRT_WAIT_REASON;
 
 #define Running    2
 #define Executive  0
+#define ThreadBasicInformation 0
 
 // -----------------------------
 // Minimal structures and enums
@@ -114,13 +115,16 @@ typedef enum _MRT_SYSTEM_INFORMATION_CLASS {
     MrtSystemProcessInformation = 5
 } MRT_SYSTEM_INFORMATION_CLASS;
 
-#define ThreadBasicInformation 0
-
 typedef struct _UNICODE_STRING {
     USHORT Length;
     USHORT MaximumLength;
     PWSTR  Buffer;
 } UNICODE_STRING;
+
+typedef struct _EXCEPTION_REGISTRATION_RECORD {
+    struct _EXCEPTION_REGISTRATION_RECORD* Next;
+    PVOID Handler; // pointer to exception handler
+} EXCEPTION_REGISTRATION_RECORD;
 
 // -----------------------------
 // Thread & process info structs
@@ -149,7 +153,8 @@ typedef struct _MRT_THREAD_INFO {
     ULONG TLSSlotCount;        
     KAFFINITY AffinityMask;
     ULONG IdealProcessor;
-    ULONG CurrentProcessor;         
+    ULONG CurrentProcessor;  
+    PVOID ExceptionList; 
 } MRT_THREAD_INFO;
 
 typedef struct _MRT_PROCESS_INFO {
@@ -159,7 +164,6 @@ typedef struct _MRT_PROCESS_INFO {
     FILETIME CreateTime;
     LARGE_INTEGER UserTime;
     LARGE_INTEGER KernelTime;
-
     SIZE_T WorkingSetSize;
     SIZE_T VirtualSize;
     SIZE_T PeakWorkingSetSize;
@@ -172,7 +176,6 @@ typedef struct _MRT_PROCESS_INFO {
     ULONGLONG CycleTime;
     LONG BasePriority;
     IO_COUNTERS IoCounters;
-
     ULONG ThreadCount;
     MRT_THREAD_INFO* Threads;
 } MRT_PROCESS_INFO;
@@ -191,7 +194,8 @@ typedef struct _TEB_PARTIAL {
     PVOID ProcessEnvironmentBlock;
     ULONG LastErrorValue;
     PVOID Win32ThreadInfo;            
-    ULONG CountOfOwnedCriticalSections; 
+    ULONG CountOfOwnedCriticalSections;
+    PVOID ExceptionList; 
 } TEB_PARTIAL;
 
 typedef struct MRT_SYSTEM_THREAD_INFORMATION {
@@ -272,7 +276,9 @@ typedef NTSTATUS (NTAPI *PFN_NtQueryInformationThread)(
     PULONG ReturnLength
 );
 
-typedef DWORD (WINAPI *PFN_GetCurrentProcessorNumber)(void);
+typedef DWORD (WINAPI *PFN_GetCurrentProcessorNumber)(
+    void
+);
 
 #ifdef __cplusplus
 extern "C" {
@@ -284,8 +290,9 @@ extern "C" {
 NTSTATUS MrtTInfo_GetAllProcesses(MRT_PROCESS_INFO** Processes, ULONG* Count);
 void MrtTInfo_FreeProcesses(MRT_PROCESS_INFO* Processes, ULONG Count);
 wchar_t* MrtTInfo_UnicodeStringToWString(UNICODE_STRING* ustr);
-const char* WaitReasonToString(MRT_WAIT_REASON reason);
-const char* ThreadStateToString(MRT_THREAD_STATE state);
+const char* MrtHelper_WaitReasonToString(MRT_WAIT_REASON reason);
+const char* MrtHelper_ThreadStateToString(MRT_THREAD_STATE state);
+void MrtHelper_PrintSEHChain(PVOID exceptionList);
 MRT_PROCESS_INFO* MrtTInfo_FindProcessByPID(MRT_PROCESS_INFO* processes, ULONG count, DWORD pid);
 MRT_THREAD_INFO* MrtTInfo_FindThreadByTID(MRT_PROCESS_INFO* processes, ULONG count, DWORD tid);
 
