@@ -90,6 +90,7 @@ static BOOL MrtTInfo_QueryCurrentThreadLive(MRT_THREAD_INFO* out)
         out->TLSSlotCount = CountTLSSlots(out->TlsPointer);
         out->ExceptionList = teb->NtTib.ExceptionList;
         out->SubSystemTib  = teb->SubSystemTib;
+        out->Self = out->TebAddress;
     }
 
     // Live thread → always running
@@ -326,6 +327,7 @@ NTSTATUS MrtTInfo_GetAllProcesses(MRT_PROCESS_INFO** Processes, ULONG* Count)
                             mt->TLSSlotCount = CountTLSSlots(mt->TlsPointer);
                             mt->ExceptionList = teb->NtTib.ExceptionList;
                             mt->SubSystemTib  = teb->SubSystemTib;
+                            mt->Self = mt->TebAddress;
                         }
                         // ---------------- CPU / Affinity info ----------------
                         if (mt->ParentPID == GetCurrentProcessId()) {

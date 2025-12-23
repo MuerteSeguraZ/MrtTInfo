@@ -161,6 +161,7 @@ typedef struct _MRT_THREAD_INFO {
     ULONG CurrentProcessor;  
     PVOID ExceptionList; 
     SUBSYSTEM_TIB SubSystemTib;
+    PVOID Self;
 } MRT_THREAD_INFO;
 
 typedef struct _MRT_PROCESS_INFO {

@@ -3,7 +3,7 @@
 git add --all
 
 set "MSG=%~1"
-if "%MSG%"=="" set "MSG=SubsystemTib (only gives 32-bit value in x86, x64 effectively unuses SubsystemTib)"
+if "%MSG%"=="" set "MSG=Self (gives TEB address)"
 
 git status
 

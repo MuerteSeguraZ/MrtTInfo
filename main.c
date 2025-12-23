@@ -41,13 +41,14 @@ int main(void)
             MRT_THREAD_INFO* th = &p->Threads[t];
 
             wprintf(L"      TID: %-6lu  BasePrio: %-2ld  State: %-15hs  Wait: %-15hs  "
-                    L"ExceptionList: %p  SubSystemTib: %p",
+                    L"ExceptionList: %p  SubSystemTib: %p  Self: %p\n",
                     th->TID,
                     th->BasePriority,
                     MrtHelper_ThreadStateToString(th->ThreadState),
                     MrtHelper_WaitReasonToString(th->WaitReason),
                     th->ExceptionList,
-                    (PVOID)(ULONG_PTR)th->SubSystemTib);
+                    (PVOID)(ULONG_PTR)th->SubSystemTib,
+                    th->Self);
 
             if (!isX86) {
                 wprintf(L"  (warning: SubSystemTib only valid on x86)");
