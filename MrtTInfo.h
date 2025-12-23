@@ -121,6 +121,19 @@ typedef enum _MRT_SYSTEM_INFORMATION_CLASS {
     MrtSystemProcessInformation = 5
 } MRT_SYSTEM_INFORMATION_CLASS;
 
+typedef struct _PEB_LDR_DATA {
+    ULONG Length;
+    BOOLEAN Initialized;
+    BYTE Padding1[3];
+    PVOID SsHandle;
+    LIST_ENTRY InLoadOrderModuleList;
+    LIST_ENTRY InMemoryOrderModuleList;
+    LIST_ENTRY InInitializationOrderModuleList;
+    PVOID EntryInProgress;                    
+    BOOLEAN ShutdownInProgress;
+    PVOID ShutdownThreadId;
+} PEB_LDR_DATA, *PPEB_LDR_DATA;
+
 typedef struct _UNICODE_STRING {
     USHORT Length;
     USHORT MaximumLength;
@@ -138,6 +151,17 @@ typedef struct _RTL_USER_PROCESS_PARAMETERS {
     UNICODE_STRING ImagePathName;
     UNICODE_STRING CommandLine;
 } RTL_USER_PROCESS_PARAMETERS;
+
+typedef struct _LDR_DATA_TABLE_ENTRY {
+    LIST_ENTRY InLoadOrderLinks;
+    LIST_ENTRY InMemoryOrderLinks;
+    LIST_ENTRY InInitializationOrderLinks;
+    PVOID DllBase;
+    PVOID EntryPoint;
+    ULONG SizeOfImage;
+    UNICODE_STRING FullDllName;
+    UNICODE_STRING BaseDllName;
+} LDR_DATA_TABLE_ENTRY;
 
 // -----------------------------
 // Thread & process info structs
@@ -178,6 +202,8 @@ typedef struct _MRT_THREAD_INFO {
     wchar_t* PebCommandLine;
     wchar_t* PebImagePath;
     PVOID PebAddress;
+    PVOID PebLdr; 
+    PVOID PebLdr_EntryInProgress;
     ULONG LastErrorValue;
     PVOID ArbitraryUserPointer;          
     ULONG CountOfOwnedCriticalSections; 
@@ -328,6 +354,7 @@ wchar_t* MrtTInfo_UnicodeStringToWString(UNICODE_STRING* ustr);
 const char* MrtHelper_WaitReasonToString(MRT_WAIT_REASON reason);
 const char* MrtHelper_ThreadStateToString(MRT_THREAD_STATE state);
 void MrtHelper_PrintSEHChain(PVOID exceptionList);
+void MrtHelper_PrintModules(PEB_LDR_DATA* ldr);
 MRT_PROCESS_INFO* MrtTInfo_FindProcessByPID(MRT_PROCESS_INFO* processes, ULONG count, DWORD pid);
 MRT_THREAD_INFO* MrtTInfo_FindThreadByTID(MRT_PROCESS_INFO* processes, ULONG count, DWORD tid);
 

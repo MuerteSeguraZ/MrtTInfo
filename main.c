@@ -47,20 +47,15 @@ int main(void)
                 MrtHelper_WaitReasonToString(th->WaitReason)
             );
 
-            // ---- PEB info ----
-            wprintf(
-                L"PEB: %p  Debugged: %hs  Session: %lu\n",
-                th->PebAddress,
-                th->PebBeingDebugged ? "YES" : "NO",
-                th->PebSessionId
-            );
+            // Print EntryInProgress from loader if available
+            if (th->PebLdr) {
+                PEB_LDR_DATA* ldr = (PEB_LDR_DATA*)th->PebLdr;
+                wprintf(L"EntryInProgress: %p\n", ldr->EntryInProgress);
 
-            if (th->PebImagePath) {
-                wprintf(L"          ImagePath: %ls\n", th->PebImagePath);
-            }
-
-            if (th->PebCommandLine) {
-                wprintf(L"          CommandLine: %ls\n", th->PebCommandLine);
+                // ---- Module list ----
+                MrtHelper_PrintModules(ldr);
+            } else {
+                wprintf(L"\n");
             }
         }
     }

@@ -3,7 +3,7 @@
 git add --all
 
 set "MSG=%~1"
-if "%MSG%"=="" set "MSG=Add PEB (ProcessEnvironmentBlock) extraction"
+if "%MSG%"=="" set "MSG=Add PEB Module Loader"
 
 git status
 

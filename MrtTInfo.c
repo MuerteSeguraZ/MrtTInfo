@@ -44,6 +44,23 @@ void MrtHelper_PrintSEHChain(PVOID exceptionList)
     }
 }
 
+void MrtHelper_PrintModules(PEB_LDR_DATA* ldr)
+{
+    LIST_ENTRY* head = &ldr->InLoadOrderModuleList;
+    LIST_ENTRY* entry = head->Flink;
+
+    while (entry != head) {
+        LDR_DATA_TABLE_ENTRY* mod =
+            CONTAINING_RECORD(entry, LDR_DATA_TABLE_ENTRY, InLoadOrderLinks);
+
+        wchar_t* baseName = mod->BaseDllName.Buffer;
+        wprintf(L"        Module: %ls  Base: %p  Size: %lu\n",
+                baseName, mod->DllBase, mod->SizeOfImage);
+
+        entry = entry->Flink;
+    }
+}
+
 static BOOL MrtTInfo_QueryCurrentThreadLive(MRT_THREAD_INFO* out)
 {
     if (!out)
@@ -79,6 +96,7 @@ static BOOL MrtTInfo_QueryCurrentThreadLive(MRT_THREAD_INFO* out)
     // --- Read extra TEB fields safely ---
     if (out->TebAddress) {
         TEB_PARTIAL* teb = (TEB_PARTIAL*)out->TebAddress;
+        PEB_PARTIAL peb = {0};
         out->PebAddress = teb->ProcessEnvironmentBlock;
         out->StackBase = teb->NtTib.StackBase;
         out->StackLimit = teb->NtTib.StackLimit;
@@ -92,16 +110,22 @@ static BOOL MrtTInfo_QueryCurrentThreadLive(MRT_THREAD_INFO* out)
         out->ExceptionList = teb->NtTib.ExceptionList;
         out->SubSystemTib  = teb->SubSystemTib;
         out->Self = out->TebAddress;
-
+    
     if (out->PebAddress) {
-        PEB_PARTIAL* peb = (PEB_PARTIAL*)out->PebAddress;
+        memcpy(&peb, out->PebAddress, sizeof(PEB_PARTIAL));
 
-        out->PebBeingDebugged = peb->BeingDebugged;
-        out->PebSessionId    = peb->SessionId;
+        if (peb.Ldr) {
+            PEB_LDR_DATA* ldr = (PEB_LDR_DATA*)peb.Ldr;
+            MrtHelper_PrintModules(ldr);
+        }
 
-        if (peb->ProcessParameters) {
+        out->PebBeingDebugged = peb.BeingDebugged;
+        out->PebSessionId    = peb.SessionId;
+        out->PebLdr = peb.Ldr;
+
+        if (peb.ProcessParameters) {
             RTL_USER_PROCESS_PARAMETERS* params =
-                (RTL_USER_PROCESS_PARAMETERS*)peb->ProcessParameters;
+                (RTL_USER_PROCESS_PARAMETERS*)peb.ProcessParameters;
 
             out->PebCommandLine =
                 MrtTInfo_UnicodeStringToWString(&params->CommandLine);
@@ -392,6 +416,12 @@ NTSTATUS MrtTInfo_GetAllProcesses(MRT_PROCESS_INFO** Processes, ULONG* Count)
 
                                 mt->PebBeingDebugged = peb->BeingDebugged;
                                 mt->PebSessionId    = peb->SessionId;
+                                mt->PebLdr           = peb->Ldr;   // <--- populate the loader list
+
+                                if (mt->PebLdr) {
+                                    PEB_LDR_DATA* ldr = (PEB_LDR_DATA*)mt->PebLdr;
+                                    mt->PebLdr_EntryInProgress = ldr->EntryInProgress;
+                                }
 
                                 if (peb->ProcessParameters) {
                                     RTL_USER_PROCESS_PARAMETERS* params =
