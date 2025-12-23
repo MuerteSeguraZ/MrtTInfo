@@ -103,6 +103,11 @@ typedef ULONG MRT_WAIT_REASON;
 #ifndef STATUS_INVALID_PARAMETER_8
 #define STATUS_INVALID_PARAMETER_8       ((NTSTATUS)0xC00000F6L)
 #endif
+#ifdef _WIN64
+typedef PVOID SUBSYSTEM_TIB;
+#else
+typedef DWORD SUBSYSTEM_TIB;
+#endif
 
 #define Running    2
 #define Executive  0
@@ -155,6 +160,7 @@ typedef struct _MRT_THREAD_INFO {
     ULONG IdealProcessor;
     ULONG CurrentProcessor;  
     PVOID ExceptionList; 
+    SUBSYSTEM_TIB SubSystemTib;
 } MRT_THREAD_INFO;
 
 typedef struct _MRT_PROCESS_INFO {
@@ -196,6 +202,7 @@ typedef struct _TEB_PARTIAL {
     PVOID Win32ThreadInfo;            
     ULONG CountOfOwnedCriticalSections;
     PVOID ExceptionList; 
+    SUBSYSTEM_TIB SubSystemTib;
 } TEB_PARTIAL;
 
 typedef struct MRT_SYSTEM_THREAD_INFORMATION {

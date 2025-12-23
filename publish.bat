@@ -3,7 +3,7 @@
 git add --all
 
 set "MSG=%~1"
-if "%MSG%"=="" set "MSG=rename helpers to MrtHelper_*, added ExceptionList to TEB and SEH Walk helper."
+if "%MSG%"=="" set "MSG=SubsystemTib (only gives 32-bit value in x86, x64 effectively unuses SubsystemTib)"
 
 git status
 

@@ -19,7 +19,7 @@ int main(void)
 
     wprintf(L"Total processes: %lu\n\n", processCount);
 
-    // print a few basic details
+    // Print a few basic details
     for (ULONG i = 0; i < processCount; i++) {
         MRT_PROCESS_INFO* p = &processes[i];
         wchar_t* imageName = MrtTInfo_UnicodeStringToWString(&p->ImageName);
@@ -34,39 +34,47 @@ int main(void)
                 p->HandleCount,
                 p->WorkingSetSize / 1024);
 
-        // print first few threads
+        // Print first few threads
+        BOOL isX86 = (sizeof(void*) == 4);
+
         for (ULONG t = 0; t < p->ThreadCount && t < 3; t++) {
             MRT_THREAD_INFO* th = &p->Threads[t];
+
             wprintf(L"      TID: %-6lu  BasePrio: %-2ld  State: %-15hs  Wait: %-15hs  "
-                    L"ExceptionList: %p\n",
+                    L"ExceptionList: %p  SubSystemTib: %p",
                     th->TID,
                     th->BasePriority,
                     MrtHelper_ThreadStateToString(th->ThreadState),
                     MrtHelper_WaitReasonToString(th->WaitReason),
-                    th->ExceptionList);
+                    th->ExceptionList,
+                    (PVOID)(ULONG_PTR)th->SubSystemTib);
 
+            if (!isX86) {
+                wprintf(L"  (warning: SubSystemTib only valid on x86)");
+            }
+
+            wprintf(L"\n");
+
+            // Print SEH chain for threads of the current process
             if (th->ParentPID == GetCurrentProcessId() && th->ExceptionList)
                 MrtHelper_PrintSEHChain(th->ExceptionList);
         }
-
-        wprintf(L"\n");
-        free(imageName);
-
     }
 
-    // demonstrate lookup helpers
+
+    // Demonstrate lookup helpers
     DWORD testPID = GetCurrentProcessId();
     MRT_PROCESS_INFO* selfProc = MrtTInfo_FindProcessByPID(processes, processCount, testPID);
     if (selfProc) {
-        wprintf(L"[Lookup] Found current process by PID %lu (%.*s)\n",
+        wchar_t* name = MrtTInfo_UnicodeStringToWString(&selfProc->ImageName);
+        wprintf(L"[Lookup] Found current process by PID %lu (%s)\n",
                 testPID,
-                selfProc->ImageName.Length / 2,
-                selfProc->ImageName.Buffer);
+                name ? name : L"<unnamed>");
+        free(name);
     } else {
         wprintf(L"[Lookup] Current process not found by PID!\n");
     }
 
-    // try finding one thread by TID (the current one)
     DWORD tid = GetCurrentThreadId();
     MRT_THREAD_INFO* selfThread = MrtTInfo_FindThreadByTID(processes, processCount, tid);
     if (selfThread) {
@@ -76,7 +84,7 @@ int main(void)
         wprintf(L"[Lookup] Current thread not found by TID!\n");
     }
 
-    // cleanup
+    // Cleanup
     MrtTInfo_FreeProcesses(processes, processCount);
     wprintf(L"\nDone.\n");
     return 0;
