@@ -3,7 +3,8 @@
 #include <stdio.h>
 #include <wchar.h>
 #include "MrtTInfo.h"
-ULONG CountTLSSlots(PVOID tlsPointer);
+
+static ULONG CountTLSSlots(PVOID tlsPointer);
 
 // --- Main API ---
 static DWORD WrapGetCurrentProcessorNumber() {
@@ -241,7 +242,7 @@ const char* MrtHelper_WaitReasonToString(ULONG reason) {
 }
 
 // Walk TLS slots and count how many are actually used
-ULONG CountTLSSlots(PVOID tlsPointer)
+static ULONG CountTLSSlots(PVOID tlsPointer)
 {
     if (!tlsPointer)
         return 0;
@@ -415,14 +416,20 @@ NTSTATUS MrtTInfo_GetAllProcesses(MRT_PROCESS_INFO** Processes, ULONG* Count)
                                 PEB_PARTIAL* peb = (PEB_PARTIAL*)mt->PebAddress;
 
                                 mt->PebBeingDebugged = peb->BeingDebugged;
-                                mt->PebSessionId    = peb->SessionId;
-                                mt->PebLdr           = peb->Ldr;   // <--- populate the loader list
+                                mt->PebSessionId     = peb->SessionId;
 
-                                if (mt->PebLdr) {
-                                    PEB_LDR_DATA* ldr = (PEB_LDR_DATA*)mt->PebLdr;
+                                // --- Loader info ---
+                                if (peb->Ldr) {
+                                    mt->PebLdr = peb->Ldr;
+                                    PEB_LDR_DATA* ldr = (PEB_LDR_DATA*)peb->Ldr;
                                     mt->PebLdr_EntryInProgress = ldr->EntryInProgress;
                                 }
 
+                                // --- Shutdown info ---
+                                mt->ShutdownInProgress = peb->ShutdownInProgress;
+                                mt->ShutdownThreadId   = peb->ShutdownThreadId;
+
+                                // --- Process parameters ---
                                 if (peb->ProcessParameters) {
                                     RTL_USER_PROCESS_PARAMETERS* params =
                                         (RTL_USER_PROCESS_PARAMETERS*)peb->ProcessParameters;

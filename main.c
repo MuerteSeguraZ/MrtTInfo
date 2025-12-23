@@ -50,12 +50,20 @@ int main(void)
             // Print EntryInProgress from loader if available
             if (th->PebLdr) {
                 PEB_LDR_DATA* ldr = (PEB_LDR_DATA*)th->PebLdr;
-                wprintf(L"EntryInProgress: %p\n", ldr->EntryInProgress);
+                wprintf(L"EntryInProgress: %p  ", ldr->EntryInProgress);
+
+                // Print Shutdown info
+                wprintf(L"ShutdownInProgress: %s  ShutdownThreadId: %p\n",
+                        th->ShutdownInProgress ? L"YES" : L"NO",
+                        th->ShutdownThreadId);
 
                 // ---- Module list ----
                 MrtHelper_PrintModules(ldr);
             } else {
-                wprintf(L"\n");
+                // Still print shutdown info even if loader is missing
+                wprintf(L"ShutdownInProgress: %s  ShutdownThreadId: %p\n",
+                        th->ShutdownInProgress ? L"YES" : L"NO",
+                        th->ShutdownThreadId);
             }
         }
     }

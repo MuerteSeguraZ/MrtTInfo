@@ -113,6 +113,7 @@ typedef DWORD SUBSYSTEM_TIB;
 #define Running    2
 #define Executive  0
 #define ThreadBasicInformation 0
+#define MRT_MAX_APCS 16
 
 // -----------------------------
 // Minimal structures and enums
@@ -179,6 +180,8 @@ typedef struct _PEB_PARTIAL {
     ULONG Reserved6;
     PVOID Reserved7;
     ULONG SessionId;
+    BOOLEAN ShutdownInProgress;
+    PVOID ShutdownThreadId;
 } PEB_PARTIAL;
 
 typedef struct _MRT_THREAD_INFO {
@@ -215,6 +218,8 @@ typedef struct _MRT_THREAD_INFO {
     PVOID ExceptionList; 
     SUBSYSTEM_TIB SubSystemTib;
     PVOID Self;
+    BOOLEAN ShutdownInProgress;   // new
+    PVOID   ShutdownThreadId;     // new
 } MRT_THREAD_INFO;
 
 typedef struct _MRT_PROCESS_INFO {
@@ -238,6 +243,13 @@ typedef struct _MRT_PROCESS_INFO {
     IO_COUNTERS IoCounters;
     ULONG ThreadCount;
     MRT_THREAD_INFO* Threads;
+    PVOID PebAddress;
+    BOOLEAN PebBeingDebugged;
+    ULONG   PebSessionId;
+    PVOID   PebLdr;
+    PVOID   PebLdr_EntryInProgress;
+    BOOLEAN ShutdownInProgress;
+    PVOID   ShutdownThreadId;
 } MRT_PROCESS_INFO;
 
 typedef struct MRT_CLIENT_ID {
