@@ -4,6 +4,7 @@
 #endif
 #include <windows.h>
 #include <stdlib.h>
+#include <wchar.h>
 
 // -----------------------------
 // basic NTSTATUS and macross
@@ -131,9 +132,31 @@ typedef struct _EXCEPTION_REGISTRATION_RECORD {
     PVOID Handler; // pointer to exception handler
 } EXCEPTION_REGISTRATION_RECORD;
 
+typedef struct _RTL_USER_PROCESS_PARAMETERS {
+    BYTE           Reserved1[16];
+    PVOID          Reserved2[10];
+    UNICODE_STRING ImagePathName;
+    UNICODE_STRING CommandLine;
+} RTL_USER_PROCESS_PARAMETERS;
+
 // -----------------------------
 // Thread & process info structs
 // -----------------------------
+typedef struct _PEB_PARTIAL {
+    BYTE Reserved1[2];
+    BYTE BeingDebugged;
+    BYTE Reserved2[1];
+    PVOID Reserved3[2];
+    PVOID Ldr;
+    PVOID ProcessParameters;
+    PVOID Reserved4[3];
+    PVOID AtlThunkSListPtr;
+    PVOID Reserved5;
+    ULONG Reserved6;
+    PVOID Reserved7;
+    ULONG SessionId;
+} PEB_PARTIAL;
+
 typedef struct _MRT_THREAD_INFO {
     DWORD TID;
     DWORD ParentPID;
@@ -150,6 +173,10 @@ typedef struct _MRT_THREAD_INFO {
     PVOID StackBase;
     PVOID StackLimit;
     PVOID TlsPointer;
+    BYTE  PebBeingDebugged;
+    ULONG PebSessionId;
+    wchar_t* PebCommandLine;
+    wchar_t* PebImagePath;
     PVOID PebAddress;
     ULONG LastErrorValue;
     PVOID ArbitraryUserPointer;          

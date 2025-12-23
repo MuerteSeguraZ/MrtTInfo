@@ -79,6 +79,7 @@ static BOOL MrtTInfo_QueryCurrentThreadLive(MRT_THREAD_INFO* out)
     // --- Read extra TEB fields safely ---
     if (out->TebAddress) {
         TEB_PARTIAL* teb = (TEB_PARTIAL*)out->TebAddress;
+        out->PebAddress = teb->ProcessEnvironmentBlock;
         out->StackBase = teb->NtTib.StackBase;
         out->StackLimit = teb->NtTib.StackLimit;
         out->TlsPointer = teb->ThreadLocalStoragePointer;
@@ -91,7 +92,24 @@ static BOOL MrtTInfo_QueryCurrentThreadLive(MRT_THREAD_INFO* out)
         out->ExceptionList = teb->NtTib.ExceptionList;
         out->SubSystemTib  = teb->SubSystemTib;
         out->Self = out->TebAddress;
+
+    if (out->PebAddress) {
+        PEB_PARTIAL* peb = (PEB_PARTIAL*)out->PebAddress;
+
+        out->PebBeingDebugged = peb->BeingDebugged;
+        out->PebSessionId    = peb->SessionId;
+
+        if (peb->ProcessParameters) {
+            RTL_USER_PROCESS_PARAMETERS* params =
+                (RTL_USER_PROCESS_PARAMETERS*)peb->ProcessParameters;
+
+            out->PebCommandLine =
+                MrtTInfo_UnicodeStringToWString(&params->CommandLine);
+            out->PebImagePath =
+                MrtTInfo_UnicodeStringToWString(&params->ImagePathName);
+        }
     }
+}
 
     // Live thread → always running
     out->ThreadState = Running;
@@ -101,6 +119,46 @@ static BOOL MrtTInfo_QueryCurrentThreadLive(MRT_THREAD_INFO* out)
     out->UserTime.QuadPart = 0;
     out->ContextSwitches = 0;
     out->StartAddress = NULL;
+
+    return TRUE;
+}
+
+BOOL MrtTInfo_QueryProcessPEB(MRT_PROCESS_INFO* proc)
+{
+    if (!proc || !proc->Threads || proc->ThreadCount == 0)
+        return FALSE;
+
+    // Pick first thread to read PEB (every thread has TEB, and TEB->PEB is the same for all)
+    MRT_THREAD_INFO* t = &proc->Threads[0];
+    if (!t->TebAddress || !t->PebAddress)
+        return FALSE;
+
+    PEB_PARTIAL* peb = (PEB_PARTIAL*)t->PebAddress;
+    if (!peb)
+        return FALSE;
+
+    // Example: read ProcessParameters
+    RTL_USER_PROCESS_PARAMETERS* params =
+        (RTL_USER_PROCESS_PARAMETERS*)peb->ProcessParameters;
+    if (params && params->CommandLine.Buffer) {
+        wchar_t* cmd = MrtTInfo_UnicodeStringToWString(&params->CommandLine);
+        if (cmd) {
+            wprintf(L"        CommandLine: %s\n", cmd);
+            free(cmd);
+        }
+    }
+
+    if (params && params->ImagePathName.Buffer) {
+        wchar_t* imagePath = MrtTInfo_UnicodeStringToWString(&params->ImagePathName);
+        if (imagePath) {
+            wprintf(L"        ImagePath: %s\n", imagePath);
+            free(imagePath);
+        }
+    }
+
+    // Optional: read BeingDebugged, SessionId
+    wprintf(L"        BeingDebugged: %d\n", peb->BeingDebugged);
+    wprintf(L"        SessionId: %lu\n", peb->SessionId);
 
     return TRUE;
 }
@@ -310,8 +368,7 @@ NTSTATUS MrtTInfo_GetAllProcesses(MRT_PROCESS_INFO** Processes, ULONG* Count)
                     {
                         mt->TebAddress = tbi.TebBaseAddress;
 
-                        if (mt->TebAddress &&
-                            mt->ParentPID == GetCurrentProcessId())
+                        if (mt->TebAddress && mp->PID == GetCurrentProcessId())
                         {
                             TEB_PARTIAL* teb =
                                 (TEB_PARTIAL*)mt->TebAddress;
@@ -329,6 +386,24 @@ NTSTATUS MrtTInfo_GetAllProcesses(MRT_PROCESS_INFO** Processes, ULONG* Count)
                             mt->SubSystemTib  = teb->SubSystemTib;
                             mt->Self = mt->TebAddress;
                         }
+
+                            if (mt->PebAddress) {
+                                PEB_PARTIAL* peb = (PEB_PARTIAL*)mt->PebAddress;
+
+                                mt->PebBeingDebugged = peb->BeingDebugged;
+                                mt->PebSessionId    = peb->SessionId;
+
+                                if (peb->ProcessParameters) {
+                                    RTL_USER_PROCESS_PARAMETERS* params =
+                                        (RTL_USER_PROCESS_PARAMETERS*)peb->ProcessParameters;
+
+                                    mt->PebCommandLine =
+                                        MrtTInfo_UnicodeStringToWString(&params->CommandLine);
+                                    mt->PebImagePath =
+                                        MrtTInfo_UnicodeStringToWString(&params->ImagePathName);
+                                }
+                            }
+
                         // ---------------- CPU / Affinity info ----------------
                         if (mt->ParentPID == GetCurrentProcessId()) {
                             // open thread with proper access
@@ -402,7 +477,13 @@ NTSTATUS MrtTInfo_GetAllProcesses(MRT_PROCESS_INFO** Processes, ULONG* Count)
 
 void MrtTInfo_FreeProcesses(MRT_PROCESS_INFO* Processes, ULONG Count) {
     if (!Processes) return;
-    for (ULONG i = 0; i < Count; i++) free(Processes[i].Threads);
+    for (ULONG i = 0; i < Count; i++) {
+        for (ULONG t = 0; t < Processes[i].ThreadCount; t++) {
+            free(Processes[i].Threads[t].PebCommandLine);
+            free(Processes[i].Threads[t].PebImagePath);
+        }
+        free(Processes[i].Threads);
+    }
     free(Processes);
 }
 

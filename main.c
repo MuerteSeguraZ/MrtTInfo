@@ -35,33 +35,35 @@ int main(void)
                 p->WorkingSetSize / 1024);
 
         // Print first few threads
-        BOOL isX86 = (sizeof(void*) == 4);
-
         for (ULONG t = 0; t < p->ThreadCount && t < 3; t++) {
             MRT_THREAD_INFO* th = &p->Threads[t];
 
-            wprintf(L"      TID: %-6lu  BasePrio: %-2ld  State: %-15hs  Wait: %-15hs  "
-                    L"ExceptionList: %p  SubSystemTib: %p  Self: %p\n",
-                    th->TID,
-                    th->BasePriority,
-                    MrtHelper_ThreadStateToString(th->ThreadState),
-                    MrtHelper_WaitReasonToString(th->WaitReason),
-                    th->ExceptionList,
-                    (PVOID)(ULONG_PTR)th->SubSystemTib,
-                    th->Self);
+            // ---- Header line (UNCHANGED) ----
+            wprintf(
+                L"      TID: %-6lu  BasePrio: %-2ld  State: %-15hs  Wait: %-15hs  ",
+                th->TID,
+                th->BasePriority,
+                MrtHelper_ThreadStateToString(th->ThreadState),
+                MrtHelper_WaitReasonToString(th->WaitReason)
+            );
 
-            if (!isX86) {
-                wprintf(L"  (warning: SubSystemTib only valid on x86)");
+            // ---- PEB info ----
+            wprintf(
+                L"PEB: %p  Debugged: %hs  Session: %lu\n",
+                th->PebAddress,
+                th->PebBeingDebugged ? "YES" : "NO",
+                th->PebSessionId
+            );
+
+            if (th->PebImagePath) {
+                wprintf(L"          ImagePath: %ls\n", th->PebImagePath);
             }
 
-            wprintf(L"\n");
-
-            // Print SEH chain for threads of the current process
-            if (th->ParentPID == GetCurrentProcessId() && th->ExceptionList)
-                MrtHelper_PrintSEHChain(th->ExceptionList);
+            if (th->PebCommandLine) {
+                wprintf(L"          CommandLine: %ls\n", th->PebCommandLine);
+            }
         }
     }
-
 
     // Demonstrate lookup helpers
     DWORD testPID = GetCurrentProcessId();
