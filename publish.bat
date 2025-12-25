@@ -3,7 +3,7 @@
 git add --all
 
 set "MSG=%~1"
-if "%MSG%"=="" set "MSG=Add PEB Module Loader"
+if "%MSG%"=="" set "MSG=Add memory priority"
 
 git status
 

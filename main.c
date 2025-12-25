@@ -10,7 +10,7 @@ int main(void)
 
     wprintf(L"[MrtTInfo Test]\n\n");
 
-    Sleep(200); // give scheduler time to record thread info
+    Sleep(500); // give scheduler time to record thread info
     status = MrtTInfo_GetAllProcesses(&processes, &processCount);
     if (!NT_SUCCESS(status)) {
         wprintf(L"Failed to get process info (NTSTATUS 0x%08X)\n", status);
@@ -29,10 +29,11 @@ int main(void)
                 p->ParentPID,
                 imageName ? imageName : L"<unnamed>");
 
-        wprintf(L"    Threads: %lu  Handles: %lu  WS: %zu KB\n",
+        wprintf(L"    Threads: %lu  Handles: %lu  WS: %zu KB  MemPrio: %lu\n",
                 p->ThreadCount,
                 p->HandleCount,
-                p->WorkingSetSize / 1024);
+                p->WorkingSetSize / 1024,
+                p->MemoryPriority);
 
         // Print first few threads
         for (ULONG t = 0; t < p->ThreadCount && t < 3; t++) {
@@ -47,6 +48,8 @@ int main(void)
                 MrtHelper_WaitReasonToString(th->WaitReason)
             );
 
+            wprintf(L"\n");
+
             // Print EntryInProgress from loader if available
             if (th->PebLdr) {
                 PEB_LDR_DATA* ldr = (PEB_LDR_DATA*)th->PebLdr;
@@ -59,11 +62,7 @@ int main(void)
 
                 // ---- Module list ----
                 MrtHelper_PrintModules(ldr);
-            } else {
-                // Still print shutdown info even if loader is missing
-                wprintf(L"ShutdownInProgress: %s  ShutdownThreadId: %p\n",
-                        th->ShutdownInProgress ? L"YES" : L"NO",
-                        th->ShutdownThreadId);
+
             }
         }
     }

@@ -279,7 +279,11 @@ NTSTATUS MrtTInfo_GetAllProcesses(MRT_PROCESS_INFO** Processes, ULONG* Count)
         (PFN_NtQueryInformationThread)GetProcAddress(
             ntdll, "NtQueryInformationThread");
 
-    if (!NtQuerySystemInformation || !NtQueryInformationThread)
+    PFN_NtQueryInformationProcess NtQueryInformationProcess =
+            (PFN_NtQueryInformationProcess)GetProcAddress(
+                ntdll, "NtQueryInformationProcess");
+
+    if (!NtQuerySystemInformation || !NtQueryInformationThread || !NtQueryInformationProcess)
         return STATUS_PROCEDURE_NOT_FOUND;
 
     ULONG bufferSize = 0x10000;
@@ -328,6 +332,7 @@ NTSTATUS MrtTInfo_GetAllProcesses(MRT_PROCESS_INFO** Processes, ULONG* Count)
     p = buffer;
     for (ULONG i = 0; i < processCount; i++) {
         MRT_PROCESS_INFO* mp = &procArray[i];
+        ULONG memPriority = 0;
 
         mp->PID       = (DWORD)(ULONG_PTR)p->UniqueProcessId;
         mp->ParentPID = (DWORD)(ULONG_PTR)p->InheritedFromUniqueProcessId;
@@ -353,6 +358,22 @@ NTSTATUS MrtTInfo_GetAllProcesses(MRT_PROCESS_INFO** Processes, ULONG* Count)
         mp->PeakVirtualSize   = p->PeakVirtualSize;
         mp->PageFaultCount    = p->PageFaultCount;
         mp->ThreadCount = p->NumberOfThreads;
+
+        HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, mp->PID);
+        if (hProcess) {
+            NTSTATUS status = NtQueryInformationProcess(
+                hProcess, 
+                ProcessMemoryPriority, 
+                &memPriority, 
+                sizeof(memPriority), 
+                NULL
+            );
+            mp->MemoryPriority = (status >= 0) ? memPriority : 0;
+            CloseHandle(hProcess);
+        } else {
+            mp->MemoryPriority = 0; // fallback
+        }
+
         if (mp->ThreadCount) {
             mp->Threads = (MRT_THREAD_INFO*)
                 calloc(mp->ThreadCount, sizeof(MRT_THREAD_INFO));

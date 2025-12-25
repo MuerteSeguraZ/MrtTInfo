@@ -113,7 +113,7 @@ typedef DWORD SUBSYSTEM_TIB;
 #define Running    2
 #define Executive  0
 #define ThreadBasicInformation 0
-#define MRT_MAX_APCS 16
+#define ProcessMemoryPriority 39
 
 // -----------------------------
 // Minimal structures and enums
@@ -241,6 +241,7 @@ typedef struct _MRT_PROCESS_INFO {
     ULONGLONG CycleTime;
     LONG BasePriority;
     IO_COUNTERS IoCounters;
+    ULONG MemoryPriority;
     ULONG ThreadCount;
     MRT_THREAD_INFO* Threads;
     PVOID PebAddress;
@@ -323,6 +324,7 @@ typedef struct MRT_SYSTEM_PROCESS_INFORMATION {
     SIZE_T PeakPagefileUsage;
     SIZE_T PrivatePageCount;
     IO_COUNTERS IoCounters;
+    ULONG MemoryPriority;
     MRT_SYSTEM_THREAD_INFORMATION Threads[1];
 } MRT_SYSTEM_PROCESS_INFORMATION;
 
@@ -351,6 +353,14 @@ typedef NTSTATUS (NTAPI *PFN_NtQueryInformationThread)(
 
 typedef DWORD (WINAPI *PFN_GetCurrentProcessorNumber)(
     void
+);
+
+typedef NTSTATUS (NTAPI *PFN_NtQueryInformationProcess)(
+    HANDLE ProcessHandle,
+    int ProcessInformationClass, // PROCESS_INFORMATION_CLASS
+    PVOID ProcessInformation,
+    ULONG ProcessInformationLength,
+    PULONG ReturnLength
 );
 
 #ifdef __cplusplus
