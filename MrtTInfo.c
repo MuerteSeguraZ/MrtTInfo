@@ -7,6 +7,16 @@
 static ULONG CountTLSSlots(PVOID tlsPointer);
 
 // --- Main API ---
+
+/**
+ * @brief Returns the processor number the current thread is running on.
+ *
+ * Resolves GetCurrentProcessorNumber from kernel32.dll at runtime to avoid
+ * hard dependencies on newer Windows versions. The function pointer is
+ * cached after the first lookup.
+ *
+ * @return Zero-based processor number, or 0 if the API is unavailable.
+ */
 static DWORD WrapGetCurrentProcessorNumber() {
     static PFN_GetCurrentProcessorNumber pFunc = NULL;
     if (!pFunc) {
@@ -18,6 +28,15 @@ static DWORD WrapGetCurrentProcessorNumber() {
     return pFunc();
 }
 
+/**
+ * @brief Dumps the structured exception handling (SEH) chain.
+ *
+ * Walks the SEH linked list starting at the given exception list pointer
+ * and prints each handler entry. The walk is bounded and includes basic
+ * sanity checks to avoid infinite loops or corrupted chains.
+ *
+ * @param exceptionList Pointer to the head of the SEH chain.
+ */
 void MrtHelper_PrintSEHChain(PVOID exceptionList)
 {
     if (!exceptionList) {
@@ -31,11 +50,11 @@ void MrtHelper_PrintSEHChain(PVOID exceptionList)
     wprintf(L"        SEH chain:\n");
 
     int index = 0;
-    while (record && index < 32) { // limit to 32 entries to avoid infinite loops
+    while (record && index < 32) {
         wprintf(L"          [%d] Handler: %p  Next: %p\n",
                 index, record->Handler, record->Next);
 
-        if (record->Next <= record) { // sanity check: must go forward in memory
+        if (record->Next <= record) {
             wprintf(L"            (terminating walk due to invalid Next)\n");
             break;
         }
@@ -45,6 +64,15 @@ void MrtHelper_PrintSEHChain(PVOID exceptionList)
     }
 }
 
+/**
+ * @brief Prints loaded modules from the PEB loader data.
+ *
+ * Walks the InLoadOrderModuleList and prints basic information
+ * about each loaded module, including base name, base address,
+ * and image size.
+ *
+ * @param ldr Pointer to the process loader data (PEB_LDR_DATA).
+ */
 void MrtHelper_PrintModules(PEB_LDR_DATA* ldr)
 {
     LIST_ENTRY* head = &ldr->InLoadOrderModuleList;
@@ -62,6 +90,20 @@ void MrtHelper_PrintModules(PEB_LDR_DATA* ldr)
     }
 }
 
+/**
+ * @brief Queries information about the current thread and fills a MRT_THREAD_INFO structure.
+ *
+ * Uses NtQueryInformationThread to gather basic thread information, then
+ * reads selected TEB and PEB fields to populate the provided output structure.
+ * Also prints loaded modules if the PEB loader data is available.
+ *
+ * @param out Pointer to an MRT_THREAD_INFO structure to receive thread info.
+ *
+ * @return TRUE if the thread info was successfully retrieved, FALSE otherwise.
+ *
+ * @note Some fields are read directly from the TEB/PEB and may not be
+ *       valid if the structure layout differs from expected.
+ */
 static BOOL MrtTInfo_QueryCurrentThreadLive(MRT_THREAD_INFO* out)
 {
     if (!out)
@@ -129,9 +171,9 @@ static BOOL MrtTInfo_QueryCurrentThreadLive(MRT_THREAD_INFO* out)
                 (RTL_USER_PROCESS_PARAMETERS*)peb.ProcessParameters;
 
             out->PebCommandLine =
-                MrtTInfo_UnicodeStringToWString(&params->CommandLine);
+                MrtTHelper_UnicodeStringToWString(&params->CommandLine);
             out->PebImagePath =
-                MrtTInfo_UnicodeStringToWString(&params->ImagePathName);
+                MrtTHelper_UnicodeStringToWString(&params->ImagePathName);
         }
     }
 }
@@ -148,6 +190,19 @@ static BOOL MrtTInfo_QueryCurrentThreadLive(MRT_THREAD_INFO* out)
     return TRUE;
 }
 
+/**
+ * @brief Reads and prints basic information from a process's PEB.
+ *
+ * Uses the PEB pointer from the first thread of the process to access
+ * process-wide information such as command line, image path, debug flag,
+ * and session ID.
+ *
+ * @param proc Pointer to an MRT_PROCESS_INFO structure containing thread info.
+ *
+ * @return TRUE if the PEB information was successfully read, FALSE otherwise.
+ *
+ * @note Assumes all threads share the same PEB. Prints info to standard output.
+ */
 BOOL MrtTInfo_QueryProcessPEB(MRT_PROCESS_INFO* proc)
 {
     if (!proc || !proc->Threads || proc->ThreadCount == 0)
@@ -166,7 +221,7 @@ BOOL MrtTInfo_QueryProcessPEB(MRT_PROCESS_INFO* proc)
     RTL_USER_PROCESS_PARAMETERS* params =
         (RTL_USER_PROCESS_PARAMETERS*)peb->ProcessParameters;
     if (params && params->CommandLine.Buffer) {
-        wchar_t* cmd = MrtTInfo_UnicodeStringToWString(&params->CommandLine);
+        wchar_t* cmd = MrtTHelper_UnicodeStringToWString(&params->CommandLine);
         if (cmd) {
             wprintf(L"        CommandLine: %s\n", cmd);
             free(cmd);
@@ -174,7 +229,7 @@ BOOL MrtTInfo_QueryProcessPEB(MRT_PROCESS_INFO* proc)
     }
 
     if (params && params->ImagePathName.Buffer) {
-        wchar_t* imagePath = MrtTInfo_UnicodeStringToWString(&params->ImagePathName);
+        wchar_t* imagePath = MrtTHelper_UnicodeStringToWString(&params->ImagePathName);
         if (imagePath) {
             wprintf(L"        ImagePath: %s\n", imagePath);
             free(imagePath);
@@ -188,6 +243,16 @@ BOOL MrtTInfo_QueryProcessPEB(MRT_PROCESS_INFO* proc)
     return TRUE;
 }
 
+/**
+ * @brief Converts a thread state code to a readable string.
+ *
+ * Maps NT thread state values to descriptive names for easier logging
+ * or debugging.
+ *
+ * @param state Numeric thread state value.
+ * @return A string representing the thread state. Returns "Unknown" for
+ *         unrecognized codes.
+ */
 const char* MrtHelper_ThreadStateToString(ULONG state) {
     switch (state) {
         case 0: return "Initialized";
@@ -213,6 +278,16 @@ const char* MrtHelper_ThreadStateToString(ULONG state) {
     }
 }
 
+/**
+ * @brief Converts a thread wait reason code to a readable string.
+ *
+ * Maps NT wait reason values to descriptive names for easier logging
+ * or debugging.
+ *
+ * @param reason Numeric wait reason code.
+ * @return A string representing the wait reason. Returns "Other" for
+ *         unrecognized codes.
+ */
 const char* MrtHelper_WaitReasonToString(ULONG reason) {
     switch (reason) {
         case 0: return "Executive";
@@ -241,7 +316,15 @@ const char* MrtHelper_WaitReasonToString(ULONG reason) {
     }
 }
 
-// Walk TLS slots and count how many are actually used
+/**
+ * @brief Counts the number of used TLS (Thread Local Storage) slots.
+ *
+ * Iterates over the TLS array for a thread and counts how many slots
+ * contain non-NULL values, indicating they are in use.
+ *
+ * @param tlsPointer Pointer to the thread's TLS array.
+ * @return Number of TLS slots that are currently used.
+ */
 static ULONG CountTLSSlots(PVOID tlsPointer)
 {
     if (!tlsPointer)
@@ -259,6 +342,32 @@ static ULONG CountTLSSlots(PVOID tlsPointer)
     return count;
 }
 
+/**
+ * @brief Retrieves information about all running processes and their threads.
+ *
+ * Queries the system using NtQuerySystemInformation to enumerate processes,
+ * then gathers detailed information for each process and its threads, including:
+ * - Basic process info (PID, parent PID, image name, creation time)
+ * - Memory and handle statistics
+ * - Thread info (TID, priorities, times, state, wait reason, start address)
+ * - TEB and PEB data for threads in the current process
+ * - TLS slots count, loader data, process parameters, shutdown info
+ * - CPU affinity, ideal processor, and current processor for threads
+ *
+ * @param Processes Pointer to receive an array of MRT_PROCESS_INFO structures.
+ *                  Memory is allocated by the function and must be freed by the caller.
+ * @param Count Pointer to receive the number of processes returned.
+ *
+ * @return NTSTATUS code indicating success or failure.
+ *         Common return values include:
+ *         - STATUS_SUCCESS
+ *         - STATUS_INVALID_PARAMETER
+ *         - STATUS_DLL_NOT_FOUND
+ *         - STATUS_PROCEDURE_NOT_FOUND
+ *         - STATUS_NO_MEMORY
+ *
+ * @note For threads in other processes, TEB/PEB and CPU info may be incomplete or unavailable.
+ */
 NTSTATUS MrtTInfo_GetAllProcesses(MRT_PROCESS_INFO** Processes, ULONG* Count)
 {
     if (!Processes || !Count)
@@ -456,9 +565,9 @@ NTSTATUS MrtTInfo_GetAllProcesses(MRT_PROCESS_INFO** Processes, ULONG* Count)
                                         (RTL_USER_PROCESS_PARAMETERS*)peb->ProcessParameters;
 
                                     mt->PebCommandLine =
-                                        MrtTInfo_UnicodeStringToWString(&params->CommandLine);
+                                        MrtTHelper_UnicodeStringToWString(&params->CommandLine);
                                     mt->PebImagePath =
-                                        MrtTInfo_UnicodeStringToWString(&params->ImagePathName);
+                                        MrtTHelper_UnicodeStringToWString(&params->ImagePathName);
                                 }
                             }
 
@@ -533,6 +642,15 @@ NTSTATUS MrtTInfo_GetAllProcesses(MRT_PROCESS_INFO** Processes, ULONG* Count)
     return STATUS_SUCCESS;
 }
 
+/**
+ * @brief Frees memory allocated for an array of MRT_PROCESS_INFO structures.
+ *
+ * Releases all dynamically allocated memory for each process and its threads,
+ * including TEB/PEB strings and the threads array, then frees the main array.
+ *
+ * @param Processes Pointer to the array of MRT_PROCESS_INFO structures.
+ * @param Count Number of processes in the array.
+ */
 void MrtTInfo_FreeProcesses(MRT_PROCESS_INFO* Processes, ULONG Count) {
     if (!Processes) return;
     for (ULONG i = 0; i < Count; i++) {
@@ -545,7 +663,16 @@ void MrtTInfo_FreeProcesses(MRT_PROCESS_INFO* Processes, ULONG Count) {
     free(Processes);
 }
 
-wchar_t* MrtTInfo_UnicodeStringToWString(UNICODE_STRING* ustr) {
+/**
+ * @brief Converts a UNICODE_STRING to a null-terminated wide string (wchar_t*).
+ *
+ * Allocates memory for the new string, which must be freed by the caller.
+ *
+ * @param ustr Pointer to the UNICODE_STRING to convert.
+ * @return Newly allocated null-terminated wide string, or NULL if input is invalid
+ *         or memory allocation fails.
+ */
+wchar_t* MrtTHelper_UnicodeStringToWString(UNICODE_STRING* ustr) {
     if (!ustr || !ustr->Buffer || ustr->Length == 0) return NULL;
     size_t len = ustr->Length / sizeof(WCHAR);
     wchar_t* str = (wchar_t*)malloc((len + 1) * sizeof(WCHAR));
@@ -555,10 +682,17 @@ wchar_t* MrtTInfo_UnicodeStringToWString(UNICODE_STRING* ustr) {
     return str;
 }
 
-// ---------------------------------------------------------------------------
-// Find a process by its PID within the array returned by MrtTInfo_GetAllProcesses.
-// Returns a pointer to the process structure, or NULL if not found.
-// ---------------------------------------------------------------------------
+/**
+ * @brief Finds a process in an array by its PID.
+ *
+ * Searches through an array of MRT_PROCESS_INFO structures and returns
+ * a pointer to the process with the specified PID.
+ *
+ * @param processes Pointer to the array of MRT_PROCESS_INFO structures.
+ * @param count Number of processes in the array.
+ * @param pid The process ID to search for.
+ * @return Pointer to the matching MRT_PROCESS_INFO, or NULL if not found.
+ */
 MRT_PROCESS_INFO* MrtTInfo_FindProcessByPID(
     MRT_PROCESS_INFO* processes,
     ULONG count,
@@ -576,11 +710,18 @@ MRT_PROCESS_INFO* MrtTInfo_FindProcessByPID(
     return NULL;
 }
 
-// ---------------------------------------------------------------------------
-// Find a thread by its TID across all processes in the array returned by
-// MrtTInfo_GetAllProcesses. Returns a pointer to the thread structure,
-// or NULL if not found.
-// ---------------------------------------------------------------------------
+/**
+ * @brief Finds a thread in an array of processes by its TID.
+ *
+ * Searches through all processes and their threads to locate a thread
+ * with the specified TID. If the thread is the current thread and not
+ * found in the snapshot, it queries live thread information.
+ *
+ * @param processes Pointer to the array of MRT_PROCESS_INFO structures.
+ * @param count Number of processes in the array.
+ * @param tid The thread ID to search for.
+ * @return Pointer to the matching MRT_THREAD_INFO, or NULL if not found.
+ */
 MRT_THREAD_INFO* MrtTInfo_FindThreadByTID(
     MRT_PROCESS_INFO* processes,
     ULONG count,

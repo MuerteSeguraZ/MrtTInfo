@@ -372,7 +372,7 @@ extern "C" {
 // -----------------------------
 NTSTATUS MrtTInfo_GetAllProcesses(MRT_PROCESS_INFO** Processes, ULONG* Count);
 void MrtTInfo_FreeProcesses(MRT_PROCESS_INFO* Processes, ULONG Count);
-wchar_t* MrtTInfo_UnicodeStringToWString(UNICODE_STRING* ustr);
+wchar_t* MrtTHelper_UnicodeStringToWString(UNICODE_STRING* ustr);
 const char* MrtHelper_WaitReasonToString(MRT_WAIT_REASON reason);
 const char* MrtHelper_ThreadStateToString(MRT_THREAD_STATE state);
 void MrtHelper_PrintSEHChain(PVOID exceptionList);

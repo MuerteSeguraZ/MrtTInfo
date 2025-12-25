@@ -22,7 +22,7 @@ int main(void)
     // Print a few basic details
     for (ULONG i = 0; i < processCount; i++) {
         MRT_PROCESS_INFO* p = &processes[i];
-        wchar_t* imageName = MrtTInfo_UnicodeStringToWString(&p->ImageName);
+        wchar_t* imageName = MrtTHelper_UnicodeStringToWString(&p->ImageName);
 
         wprintf(L"PID: %-5lu  PPID: %-5lu  Name: %s\n",
                 p->PID,
@@ -71,7 +71,7 @@ int main(void)
     DWORD testPID = GetCurrentProcessId();
     MRT_PROCESS_INFO* selfProc = MrtTInfo_FindProcessByPID(processes, processCount, testPID);
     if (selfProc) {
-        wchar_t* name = MrtTInfo_UnicodeStringToWString(&selfProc->ImageName);
+        wchar_t* name = MrtTHelper_UnicodeStringToWString(&selfProc->ImageName);
         wprintf(L"[Lookup] Found current process by PID %lu (%s)\n",
                 testPID,
                 name ? name : L"<unnamed>");

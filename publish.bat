@@ -3,7 +3,7 @@
 git add --all
 
 set "MSG=%~1"
-if "%MSG%"=="" set "MSG=Add memory priority"
+if "%MSG%"=="" set "MSG=Add Doxygen documentation"
 
 git status
 
