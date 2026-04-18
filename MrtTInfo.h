@@ -113,7 +113,7 @@ typedef DWORD SUBSYSTEM_TIB;
 #define Running    2
 #define Executive  0
 #define ThreadBasicInformation 0
-#define ProcessMemoryPriority 39
+#define MRT_MAX_APCS 16
 
 // -----------------------------
 // Minimal structures and enums
@@ -241,7 +241,6 @@ typedef struct _MRT_PROCESS_INFO {
     ULONGLONG CycleTime;
     LONG BasePriority;
     IO_COUNTERS IoCounters;
-    ULONG MemoryPriority;
     ULONG ThreadCount;
     MRT_THREAD_INFO* Threads;
     PVOID PebAddress;
@@ -324,7 +323,6 @@ typedef struct MRT_SYSTEM_PROCESS_INFORMATION {
     SIZE_T PeakPagefileUsage;
     SIZE_T PrivatePageCount;
     IO_COUNTERS IoCounters;
-    ULONG MemoryPriority;
     MRT_SYSTEM_THREAD_INFORMATION Threads[1];
 } MRT_SYSTEM_PROCESS_INFORMATION;
 
@@ -355,14 +353,6 @@ typedef DWORD (WINAPI *PFN_GetCurrentProcessorNumber)(
     void
 );
 
-typedef NTSTATUS (NTAPI *PFN_NtQueryInformationProcess)(
-    HANDLE ProcessHandle,
-    int ProcessInformationClass, // PROCESS_INFORMATION_CLASS
-    PVOID ProcessInformation,
-    ULONG ProcessInformationLength,
-    PULONG ReturnLength
-);
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -372,7 +362,7 @@ extern "C" {
 // -----------------------------
 NTSTATUS MrtTInfo_GetAllProcesses(MRT_PROCESS_INFO** Processes, ULONG* Count);
 void MrtTInfo_FreeProcesses(MRT_PROCESS_INFO* Processes, ULONG Count);
-wchar_t* MrtTHelper_UnicodeStringToWString(UNICODE_STRING* ustr);
+wchar_t* MrtTInfo_UnicodeStringToWString(UNICODE_STRING* ustr);
 const char* MrtHelper_WaitReasonToString(MRT_WAIT_REASON reason);
 const char* MrtHelper_ThreadStateToString(MRT_THREAD_STATE state);
 void MrtHelper_PrintSEHChain(PVOID exceptionList);

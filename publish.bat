@@ -3,7 +3,7 @@
 git add --all
 
 set "MSG=%~1"
-if "%MSG%"=="" set "MSG=Add Doxygen documentation"
+if "%MSG%"=="" set "MSG=Revert"
 
 git status
 
