@@ -3,7 +3,7 @@
 git add --all
 
 set "MSG=%~1"
-if "%MSG%"=="" set "MSG=Revert"
+if "%MSG%"=="" set "MSG=Finally fix the shit"
 
 git status
 

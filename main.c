@@ -25,18 +25,19 @@ int main(void)
         if (p->PID == 0)
             continue;
 
-        wchar_t* imageName = MrtTHelper_UnicodeStringToWString(&p->ImageName);
+        // FIX 1: was MrtTHelper_UnicodeStringToWString (wrong prefix)
+        wchar_t* imageName = MrtTInfo_UnicodeStringToWString(&p->ImageName);
 
         wprintf(L"PID: %-5lu  PPID: %-5lu  Name: %s\n",
                 p->PID,
                 p->ParentPID,
                 imageName ? imageName : L"<unnamed>");
 
-        wprintf(L"    Threads: %lu  Handles: %lu  WS: %zu KB  MemPrio: %lu\n",
+        // FIX 2: removed p->MemoryPriority — no such field in MRT_PROCESS_INFO
+        wprintf(L"    Threads: %lu  Handles: %lu  WS: %zu KB\n",
                 p->ThreadCount,
                 p->HandleCount,
-                p->WorkingSetSize / 1024,
-                p->MemoryPriority);
+                p->WorkingSetSize / 1024);
 
         free(imageName);
 
@@ -49,14 +50,11 @@ int main(void)
                     MrtHelper_ThreadStateToString(th->ThreadState),
                     MrtHelper_WaitReasonToString(th->WaitReason));
 
-            if (th->StartAddress && th->EndAddress) {
-                wprintf(L"        StartAddress: %p  EndAddress: %p  Size: 0x%Ix bytes\n",
-                        th->StartAddress, th->EndAddress,
-                        (SIZE_T)((PBYTE)th->EndAddress - (PBYTE)th->StartAddress));
-            } else if (th->StartAddress) {
-                wprintf(L"        StartAddress: %p  EndAddress: <n/a>\n", th->StartAddress);
+            // FIX 3: MRT_THREAD_INFO has no EndAddress — removed all references to it
+            if (th->StartAddress) {
+                wprintf(L"        StartAddress: %p\n", th->StartAddress);
             } else {
-                wprintf(L"        StartAddress: <n/a>  EndAddress: <n/a>\n");
+                wprintf(L"        StartAddress: <n/a>\n");
             }
 
             if (th->TebAddress) {
@@ -85,7 +83,8 @@ int main(void)
     DWORD testPID = GetCurrentProcessId();
     MRT_PROCESS_INFO* selfProc = MrtTInfo_FindProcessByPID(processes, processCount, testPID);
     if (selfProc) {
-        wchar_t* name = MrtTHelper_UnicodeStringToWString(&selfProc->ImageName);
+        // FIX 1 (again): was MrtTHelper_UnicodeStringToWString (wrong prefix)
+        wchar_t* name = MrtTInfo_UnicodeStringToWString(&selfProc->ImageName);
         wprintf(L"[Lookup] Found self: PID %lu (%s)\n",
                 testPID, name ? name : L"<unnamed>");
         free(name);

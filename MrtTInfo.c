@@ -252,7 +252,6 @@ static ULONG CountTLSSlots(PVOID tlsPointer)
 
     // Windows 7 has 108 TLS slots
     for (ULONG i = 0; i < 108; i++) {
-        // Count a slot as "used" if it's non-NULL or reserved (optional)
         if (tlsArray[i] != NULL)
             count++;
     }
@@ -331,7 +330,19 @@ NTSTATUS MrtTInfo_GetAllProcesses(MRT_PROCESS_INFO** Processes, ULONG* Count)
 
         mp->PID       = (DWORD)(ULONG_PTR)p->UniqueProcessId;
         mp->ParentPID = (DWORD)(ULONG_PTR)p->InheritedFromUniqueProcessId;
-        mp->ImageName = p->ImageName;
+
+        // FIX: deep-copy ImageName so it survives free(buffer) below
+        mp->ImageName.Length        = p->ImageName.Length;
+        mp->ImageName.MaximumLength = p->ImageName.Length + sizeof(WCHAR);
+        if (p->ImageName.Buffer && p->ImageName.Length > 0) {
+            mp->ImageName.Buffer = (PWSTR)malloc(mp->ImageName.MaximumLength);
+            if (mp->ImageName.Buffer) {
+                memcpy(mp->ImageName.Buffer, p->ImageName.Buffer, p->ImageName.Length);
+                mp->ImageName.Buffer[p->ImageName.Length / sizeof(WCHAR)] = L'\0';
+            }
+        } else {
+            mp->ImageName.Buffer = NULL;
+        }
 
         LARGE_INTEGER_TO_FILETIME u;
         u.li = p->CreateTime;
@@ -393,6 +404,17 @@ NTSTATUS MrtTInfo_GetAllProcesses(MRT_PROCESS_INFO** Processes, ULONG* Count)
                     {
                         mt->TebAddress = tbi.TebBaseAddress;
 
+                        PVOID startAddr = NULL;
+                        if (NT_SUCCESS(NtQueryInformationThread(
+                                hThread,
+                                9,
+                                &startAddr,
+                                sizeof(startAddr),
+                                NULL)))
+                        {
+                            mt->StartAddress = startAddr;
+                        }
+
                         if (mt->TebAddress && mp->PID == GetCurrentProcessId())
                         {
                             TEB_PARTIAL* teb =
@@ -443,7 +465,6 @@ NTSTATUS MrtTInfo_GetAllProcesses(MRT_PROCESS_INFO** Processes, ULONG* Count)
 
                         // ---------------- CPU / Affinity info ----------------
                         if (mt->ParentPID == GetCurrentProcessId()) {
-                            // open thread with proper access
                             HANDLE hQueryThread = OpenThread(
                                 THREAD_QUERY_INFORMATION | THREAD_SET_INFORMATION,
                                 FALSE,
@@ -455,7 +476,6 @@ NTSTATUS MrtTInfo_GetAllProcesses(MRT_PROCESS_INFO** Processes, ULONG* Count)
                                 DWORD_PTR oldAffinity = SetThreadAffinityMask(hQueryThread, (DWORD_PTR)-1);
                                 if (oldAffinity != 0) {
                                     mt->AffinityMask = oldAffinity;
-                                    // restore original affinity
                                     SetThreadAffinityMask(hQueryThread, oldAffinity);
                                 } else {
                                     mt->AffinityMask = 0;
@@ -471,7 +491,6 @@ NTSTATUS MrtTInfo_GetAllProcesses(MRT_PROCESS_INFO** Processes, ULONG* Count)
                                 }
                         
                                 // ----- Current CPU -----
-                                // Only safe for the calling thread; for others, leave as -1
                                 if (GetCurrentThreadId() == mt->TID) {
                                     mt->CurrentProcessor = WrapGetCurrentProcessorNumber();
                                 } else {
@@ -480,13 +499,11 @@ NTSTATUS MrtTInfo_GetAllProcesses(MRT_PROCESS_INFO** Processes, ULONG* Count)
 
                                 CloseHandle(hQueryThread);
                             } else {
-                                // fallback if OpenThread failed
                                 mt->AffinityMask = 0;
                                 mt->IdealProcessor = 0;
                                 mt->CurrentProcessor = (ULONG)-1;
                             }
                         } else {
-                            // threads from other processes
                             mt->AffinityMask = 0;
                             mt->IdealProcessor = (ULONG)-1;
                             mt->CurrentProcessor = (ULONG)-1;
@@ -508,13 +525,15 @@ NTSTATUS MrtTInfo_GetAllProcesses(MRT_PROCESS_INFO** Processes, ULONG* Count)
     *Processes = procArray;
     *Count = processCount;
 
-    free(buffer);
+    free(buffer); // safe now — ImageName.Buffer has its own allocation
     return STATUS_SUCCESS;
 }
 
 void MrtTInfo_FreeProcesses(MRT_PROCESS_INFO* Processes, ULONG Count) {
     if (!Processes) return;
     for (ULONG i = 0; i < Count; i++) {
+        // FIX: free the deep-copied ImageName buffer
+        free(Processes[i].ImageName.Buffer);
         for (ULONG t = 0; t < Processes[i].ThreadCount; t++) {
             free(Processes[i].Threads[t].PebCommandLine);
             free(Processes[i].Threads[t].PebImagePath);
@@ -534,10 +553,6 @@ wchar_t* MrtTInfo_UnicodeStringToWString(UNICODE_STRING* ustr) {
     return str;
 }
 
-// ---------------------------------------------------------------------------
-// Find a process by its PID within the array returned by MrtTInfo_GetAllProcesses.
-// Returns a pointer to the process structure, or NULL if not found.
-// ---------------------------------------------------------------------------
 MRT_PROCESS_INFO* MrtTInfo_FindProcessByPID(
     MRT_PROCESS_INFO* processes,
     ULONG count,
@@ -555,11 +570,6 @@ MRT_PROCESS_INFO* MrtTInfo_FindProcessByPID(
     return NULL;
 }
 
-// ---------------------------------------------------------------------------
-// Find a thread by its TID across all processes in the array returned by
-// MrtTInfo_GetAllProcesses. Returns a pointer to the thread structure,
-// or NULL if not found.
-// ---------------------------------------------------------------------------
 MRT_THREAD_INFO* MrtTInfo_FindThreadByTID(
     MRT_PROCESS_INFO* processes,
     ULONG count,
@@ -569,7 +579,6 @@ MRT_THREAD_INFO* MrtTInfo_FindThreadByTID(
     if (!processes || count == 0)
         return NULL;
 
-    // 1) Try snapshot first (fast path)
     for (ULONG i = 0; i < count; i++) {
         MRT_PROCESS_INFO* proc = &processes[i];
         if (!proc->Threads || proc->ThreadCount == 0)
@@ -581,7 +590,6 @@ MRT_THREAD_INFO* MrtTInfo_FindThreadByTID(
         }
     }
 
-    // 2) If it's the current thread, query live
     if (tid == GetCurrentThreadId()) {
         static MRT_THREAD_INFO liveThread;
         ZeroMemory(&liveThread, sizeof(liveThread));
